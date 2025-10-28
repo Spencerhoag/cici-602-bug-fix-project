@@ -1,1 +1,68 @@
-A Python application that allows users to upload their code and terminal output, and have a Deepseek AI Coder model automate any bug fixing challenges. This will be done by the model running in a containerized environment, actually running the code and getting it's output, then repeating this process until there are no errors. The application will also be able to fix semantic errors, by having the code itself and the output currently being generated, as well as the intended output. The user will be able to upload a single file of code, a repository of code, or even a GitHub issue.
+# CICI - AI-Powered Code Bug Fixer
+
+> **Status**: Idea Phase - Planning & Design
+
+## Overview
+
+An automated bug-fixing application that uses AI models to iteratively debug and fix code by running it in a safe, containerized environment. The system analyzes errors, applies fixes, and repeats until the code runs successfully.
+
+## Concept
+
+Users upload their buggy code along with the expected output. The application:
+1. Runs the code in a Docker container
+2. Captures any errors or incorrect output
+3. Uses an AI model to analyze and fix the issues
+4. Repeats the process until the code executes without errors
+5. Returns the corrected code to the user
+
+## Planned Features
+
+### Code Upload Options
+- **Single File**: Upload individual source files
+- **Zip Archive**: Upload multiple files as a compressed archive
+- **GitHub Repository**: Provide a public repository URL for cloning
+
+### Error Detection & Fixing
+- **Syntax Errors**: Automatic detection and correction of compilation/interpretation errors
+- **Runtime Errors**: Fix crashes, exceptions, and runtime failures
+- **Semantic Errors**: Compare actual output against user-provided expected output and fix logical issues
+
+### Supported Languages
+- Python
+- Java
+- C
+
+## Technical Approach
+
+### AI Models (Under Evaluation)
+- Locally runnable models (for privacy and cost)
+- Free-tier options like Google Gemini
+- Other open-source code models
+
+### Execution Environment
+- **Docker**: Isolated containers for safe code execution
+- Each code submission runs in a fresh container
+- Automatic cleanup after processing
+
+### Limitations
+- **No Secrets Management**: This tool is not designed to handle API keys, credentials, or sensitive data
+- **Public Repositories Only**: GitHub integration limited to public repos
+
+## Use Cases
+
+- Students debugging homework assignments
+- Developers quickly fixing small code snippets
+- Learning from AI-generated fixes
+- Rapid prototyping and testing
+
+## Future Considerations
+
+- Support for additional programming languages
+- GitHub issue integration
+- Batch processing of multiple files
+- Enhanced semantic error detection
+- Code quality and optimization suggestions
+
+---
+
+**Note**: This project is in early conceptual stages. Features and specifications are subject to change.
