@@ -1,0 +1,34 @@
+version: '3.8'
+
+services:
+  app:
+    build: ./app
+    container_name: code-fixer-api
+    ports:
+      - "8000:8000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./repair_data:/repairs
+    # depends_on:
+    #   ollama:
+    #     condition: service_healthy
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_models:/root/.ollama
+    # healthcheck:
+    #   test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+    #   interval: 10s
+    #   timeout: 5s
+    #   retries: 30
+    #   start_period: 40s
+volumes:
+  ollama_models:
+
+  

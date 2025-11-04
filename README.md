@@ -2,6 +2,16 @@
 
 > **Status**: Idea Phase - Planning & Design
 
+## How to Run
+1. Go to root directory
+2. docker compose build app - Builds container (only have to do this once or if changes are made)
+3. cd into “runners”
+4. docker build -t python-runner -f python.Dockerfile . - Builds python runner container (only have to do this once unless changes are made to python-runner Dockerfile)
+5. Docker compose up -d - Starts containers
+6. docker exec -it ollama ollama pull codellama:7b-instruct - Pull code llama llm (only have to do this on first build)
+8. http://localhost:8000/docs - Opens swagger ui
+ docker logs -f code-fixer-api    - Access logs for debugging
+
 ## Overview
 
 An automated bug-fixing application that uses AI models to iteratively debug and fix code by running it in a safe, containerized environment. The system analyzes errors, applies fixes, and repeats until the code runs successfully.
