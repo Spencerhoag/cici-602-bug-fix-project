@@ -10,9 +10,9 @@
 5. Docker compose up -d - Starts containers
 6. docker exec -it ollama ollama pull codellama:7b-instruct - Pull code llama llm (only have to do this on first build)
 8. http://localhost:8000/docs - Opens swagger ui
- docker logs -f code-fixer-api    - Access logs for debugging
+9. docker logs -f code-fixer-api    - Access logs for debugging
 
-## Overview
+## Overview 
 
 An automated bug-fixing application that uses AI models to iteratively debug and fix code by running it in a safe, containerized environment. The system analyzes errors, applies fixes, and repeats until the code runs successfully.
 

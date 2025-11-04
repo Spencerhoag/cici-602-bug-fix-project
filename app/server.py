@@ -3,6 +3,7 @@ import subprocess, uuid, os, shutil, json, tempfile
 from pydantic import BaseModel
 from typing import Optional
 import re
+from pathlib import Path
 from llm_client import call_llm
 
 
@@ -23,23 +24,32 @@ class RepairRequest(BaseModel):
     language: str  # python or java
 
 
-def run_python(run_dir, filename):
-    print("CONTAINER RUN_DIR:", run_dir)
-    host_dir = host_path_from_container_path(run_dir)
-    print("HOST_DIR BEING MOUNTED:", host_dir)
+def run_python(run_id, filename):
+    host_dir = Path("repair_data") / run_id
+    host_dir = host_dir.resolve()  # absolute host path
+    print("HOST_DIR being mounted:", host_dir)
+
     cmd = [
         "docker", "run", "--rm",
         "--network", "none",
         "--memory=512m",
         "--cpus=0.5",
-        "-v", f"{host_dir}:/work:ro",
+        "-v", f"{host_dir}:/work:ro",  # host path
         "-w", "/work",
-        "python-runner",  # built from python.Dockerfile
+        "python-runner-image",
         "python", filename
     ]
-    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
-    return proc.returncode, proc.stdout, proc.stderr
 
+    print("RUN CMD:", " ".join(str(c) for c in cmd))
+
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+        return proc.returncode, proc.stdout, proc.stderr
+    except subprocess.TimeoutExpired:
+        return -1, "", "Execution timed out"
+    except FileNotFoundError:
+        return -1, "", "Docker not found, make sure Docker is installed and running"
+    
 
 def run_java(run_dir, filename):
     cmd = [
