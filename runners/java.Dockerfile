@@ -1,3 +1,7 @@
-FROM openjdk:21-slim
+FROM openjdk:17-slim
+
+# Directory where we will copy code into
 WORKDIR /work
-CMD ["bash", "-c", "javac Main.java && java Main"]
+
+# Default command (will get overridden by docker create)
+CMD ["java"]

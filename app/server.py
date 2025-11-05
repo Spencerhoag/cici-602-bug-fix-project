@@ -12,58 +12,88 @@ app = FastAPI()
 WORKDIR = "/repairs"
 
 
-def host_path_from_container_path(path: str) -> str:
-    # container: /repairs/<run_id>
-    # host: ./repair_data/<run_id>
-    return path.replace("/repairs", "./repair_data")
-
-
-
 class RepairRequest(BaseModel):
     expected_output: Optional[str] = None
     language: str  # python or java
 
 
 def run_python(run_id, filename):
-    host_dir = Path("repair_data") / run_id
-    host_dir = host_dir.resolve()  # absolute host path
-    print("HOST_DIR being mounted:", host_dir)
+    # path inside API container
+    container_path = f"/repairs/{run_id}/{filename}"
 
-    cmd = [
-        "docker", "run", "--rm",
-        "--network", "none",
-        "--memory=512m",
-        "--cpus=0.5",
-        "-v", f"{host_dir}:/work:ro",  # host path
-        "-w", "/work",
-        "python-runner-image",
-        "python", filename
-    ]
+    # creates unique name for the runner container
+    runner_name = f"python_runner_{uuid.uuid4().hex[:8]}"
 
-    print("RUN CMD:", " ".join(str(c) for c in cmd))
+    print("RUNNER NAME:", runner_name)
+    print("CONTAINER PATH TO COPY:", container_path)
 
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
-        return proc.returncode, proc.stdout, proc.stderr
-    except subprocess.TimeoutExpired:
-        return -1, "", "Execution timed out"
-    except FileNotFoundError:
-        return -1, "", "Docker not found, make sure Docker is installed and running"
-    
+        # 1. runner container params (but do not run yet)
+        subprocess.run(
+            ["docker", "create", "--name", runner_name,
+             "python-runner", "python", filename],
+            check=True
+        )
 
-def run_java(run_dir, filename):
-    cmd = [
-        "docker", "run", "--rm",
-        "--network", "none",
-        "--memory=512m",
-        "--cpus=0.5",
-        "-v", f"{run_dir}:/work:ro",
-        "-w", "/work",
-        "java-runner-image",  # built from java.Dockerfile
-        "bash", "-c", f"javac {filename} && java {filename[:-5]}"
-    ]
-    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
-    return proc.returncode, proc.stdout, proc.stderr
+        # 2. Copy user file from API container into runner container
+        subprocess.run(
+            ["docker", "cp",
+             container_path,
+             f"{runner_name}:/work/{filename}"],
+            check=True
+        )
+
+        # 3. Start the container, capture output
+        proc = subprocess.run(
+            ["docker", "start", "-a", runner_name],
+            capture_output=True, text=True
+        )
+
+        return proc.returncode, proc.stdout, proc.stderr
+
+    finally:
+        # 4. remove the runner container after execution
+        subprocess.run(["docker", "rm", "-f", runner_name])
+
+
+def run_java(run_id, filename):
+    # Path to user code inside the API container
+    container_path = f"/repairs/{run_id}/{filename}"
+
+    # create a unique runner container name
+    runner_name = f"java_runner_{uuid.uuid4().hex[:8]}"
+
+    print("JAVA RUNNER NAME:", runner_name)
+    print("CONTAINER PATH TO COPY:", container_path)
+
+    try:
+        # 1. create the Java runner container (but do not run it yet)
+        subprocess.run(
+            ["docker", "create", "--name", runner_name,
+             "java-runner", "sh", "-c",
+             f"javac {filename} && java {filename.replace('.java','')}"],
+            check=True
+        )
+
+        # 2. Copy the user's Java file from API container into runner
+        subprocess.run(
+            ["docker", "cp",
+             container_path,
+             f"{runner_name}:/work/{filename}"],
+            check=True
+        )
+
+        # 3. Start the container and capture output
+        proc = subprocess.run(
+            ["docker", "start", "-a", runner_name],
+            capture_output=True, text=True
+        )
+
+        return proc.returncode, proc.stdout, proc.stderr
+
+    finally:
+        # 4. Clean up runner container
+        subprocess.run(["docker", "rm", "-f", runner_name])
 
 
 def extract_code_only(text: str) -> str:
@@ -127,12 +157,12 @@ async def repair(run_id: str, req: RepairRequest):
     for iteration in range(3):
         # 1. RUN USER CODE
         if req.language == "python":
-            ret, out, err = run_python(run_dir, filename)
+            ret, out, err = run_python(run_id, filename)  # starts python-runner container
             print("RUN OUTPUT:\n", out, "ERR:\n", err, ret)
         else:
-            ret, out, err = run_java(run_dir, filename)
+            ret, out, err = run_java(run_id, filename)  # starts java-runner container
 
-        # 2. CHECK FOR SUCCESS
+        # 2. CHECK FOR SUCCESS - exit code == 0 and expected output matches or not provided
         if ret == 0:
             if req.expected_output is None or out.strip() == req.expected_output.strip():
                 return {
@@ -179,13 +209,15 @@ EXPECTED OUTPUT:
 RETURN ONLY THE FULL FIXED CODE BELOW NOTHING ELSE:
 """
 
+        # 5. Call LLM
         raw = call_llm(prompt)
-        print("LLM RAW OUTPUT:\n", raw)
+        print("LLM RAW OUTPUT:\n", raw)  # for debugging
 
+        # Extract only the code from LLM response
         new_code = extract_code_only(raw)
         print("CLEANED CODE:\n", new_code)
 
-        # overwrite file
+        # overwrite user's file
         with open(source_path, "w") as f:
             f.write(new_code)
 

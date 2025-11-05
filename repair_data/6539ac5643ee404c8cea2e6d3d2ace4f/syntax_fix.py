@@ -1,1 +1,0 @@
-docker run -v /app/repair_data:/app/repair_data python:3.9-slim print("Hello World")
