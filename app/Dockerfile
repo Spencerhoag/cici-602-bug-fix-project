@@ -5,7 +5,6 @@ WORKDIR /app
 
 # Install system dependencies:
 # - docker.io → Docker CLI (needed because we run "docker run …" via subprocess)
-# - git → required for applying patches using "git apply"
 RUN apt-get update && \
     apt-get install -y docker.io && \
     apt-get clean
