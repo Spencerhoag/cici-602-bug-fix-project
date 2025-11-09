@@ -6,11 +6,18 @@ import re
 from pathlib import Path
 from llm_client import call_llm
 
+# Eddie import
+import supabase as supabase
+
 
 app = FastAPI()
 
 WORKDIR = "/repairs"
 
+@app.get("/getitbruh")
+def nowgetit() -> str:
+    #print("hi")
+    return hiya()
 
 class RepairRequest(BaseModel):
     expected_output: Optional[str] = None
@@ -141,17 +148,36 @@ async def upload(file: UploadFile = File(...), language: str = "python"):
     with open(dest_path, "wb") as f:
         f.write(await file.read())
 
+        # Proof of concept
+
+        # You can find the below in "Project Settings" and then "Data API"
+        # towards the top.
+        Dburl: str = "https://jbsqfajyjowjclrpifqh.supabase.co"
+        # You can find the below in "Project Settings" and then "API Keys"
+        Dbkey: str = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Impic3FmYWp5am93amNscnBpZnFoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI0Nzk4NjIsImV4cCI6MjA3ODA1NTg2Mn0.OBMv1oJp7qqFbZn8gxA_Ov7ue2xN6YYa-m2rLrDrmyc"
+        # I don't know of a better way to do this right now, so I did it this way. It's a string
+        # With all of the contents of the file.
+        fileContents: str = ""
+        line: str = file.read()
+        while (line != ""):
+            fileContents += line
+        ourDb: Client = supabase.create_client(Dburl, Dbkey)
+        # The below should add a new row to the Db.
+        ourDb.table("SupabaseAPIExperiments").insert({"id": run_id, "created_at": fileContents})
+
     return {"run_id": run_id, "filename": filename}
 
 
 @app.post("/repair/{run_id}")
 async def repair(run_id: str, req: RepairRequest):
+
     run_dir = os.path.join(WORKDIR, run_id)
 
     files = os.listdir(run_dir)
+
     if not files:
         raise HTTPException(404, "No file in run directory")
-
+    ##########################################return "here we are again again once again of course"
     filename = files[0]
 
     for iteration in range(3):
@@ -220,5 +246,16 @@ RETURN ONLY THE FULL FIXED CODE BELOW NOTHING ELSE:
         # overwrite user's file
         with open(source_path, "w") as f:
             f.write(new_code)
+
+            # Proof of concept
+
+            # You can find the below in "Project Settings" and then "Data API"
+            # towards the top.
+            Dburl : str = "https://jbsqfajyjowjclrpifqh.supabase.co"
+            # You can find the below in "Project Settings" and then "API Keys"
+            Dbkey : str = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Impic3FmYWp5am93amNscnBpZnFoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI0Nzk4NjIsImV4cCI6MjA3ODA1NTg2Mn0.OBMv1oJp7qqFbZn8gxA_Ov7ue2xN6YYa-m2rLrDrmyc"
+            ourDb : Client = supabase.create_client(Dburl, Dbkey)
+            # The below line SHOULD update the db row for the file with the new text/code
+            ourDb.table("SupabaseAPIExperiments").update({"created_at": new_code}).eq("id", int(filename)).execute()
 
     return {"status": "failed", "error": "Max iterations reached"}
