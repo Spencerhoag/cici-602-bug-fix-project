@@ -162,7 +162,7 @@ async def upload(file: UploadFile = File(...), language: str = "python"):
         fileContents: str = "print(\"Bruh\")"
         ourDb: Client = create_client(Dburl, Dbkey)
         # The below should add a new row to the Db. This needs to be changed.
-        ourDb.table("SupabaseAPIExperiments").insert({"id": int(run_id, 16) // 1000000000000000000000, "created_at": fileContents}).execute()
+        ourDb.table("SupabaseAPIExperiments").insert({"directoryName": run_id, "fileContents": fileContents}).execute()
 
     return {"run_id": run_id, "filename": filename}
 
@@ -255,6 +255,6 @@ RETURN ONLY THE FULL FIXED CODE BELOW NOTHING ELSE:
             Dbkey : str = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Impic3FmYWp5am93amNscnBpZnFoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI0Nzk4NjIsImV4cCI6MjA3ODA1NTg2Mn0.OBMv1oJp7qqFbZn8gxA_Ov7ue2xN6YYa-m2rLrDrmyc"
             ourDb : Client = create_client(Dburl, Dbkey)
             # The below line SHOULD update the db row for the file with the new text/code
-            ourDb.table("SupabaseAPIExperiments").update({"created_at": new_code}).eq("id", int(filename)).execute()
+            ourDb.table("SupabaseAPIExperiments").update({"fileContents": new_code}).eq("directoryName", run_id).execute()
 
     return {"status": "failed", "error": "Max iterations reached"}
