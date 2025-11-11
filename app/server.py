@@ -1,4 +1,5 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 import subprocess, uuid, os, shutil, json, tempfile
 from pydantic import BaseModel
 from typing import Optional
@@ -8,6 +9,15 @@ from llm_client import call_llm
 
 
 app = FastAPI()
+
+# Add CORS middleware to allow frontend requests
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://localhost:5173"],  # Frontend URLs
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 WORKDIR = "/repairs"
 
@@ -27,21 +37,29 @@ def run_python(run_id, filename):
     print("RUNNER NAME:", runner_name)
     print("CONTAINER PATH TO COPY:", container_path)
 
+    # Verify file exists before attempting to copy
+    if not os.path.exists(container_path):
+        raise FileNotFoundError(f"Source file not found: {container_path}")
+
     try:
         # 1. runner container params (but do not run yet)
-        subprocess.run(
+        create_result = subprocess.run(
             ["docker", "create", "--name", runner_name,
              "python-runner", "python", filename],
-            check=True
+            capture_output=True, text=True, check=True
         )
+        print(f"Container created: {runner_name}")
 
         # 2. Copy user file from API container into runner container
-        subprocess.run(
+        copy_result = subprocess.run(
             ["docker", "cp",
              container_path,
              f"{runner_name}:/work/{filename}"],
-            check=True
+            capture_output=True, text=True, check=True
         )
+        print(f"File copied successfully to {runner_name}:/work/{filename}")
+        if copy_result.stderr:
+            print(f"Copy stderr: {copy_result.stderr}")
 
         # 3. Start the container, capture output
         proc = subprocess.run(
@@ -53,7 +71,7 @@ def run_python(run_id, filename):
 
     finally:
         # 4. remove the runner container after execution
-        subprocess.run(["docker", "rm", "-f", runner_name])
+        subprocess.run(["docker", "rm", "-f", runner_name], capture_output=True)
 
 
 def run_java(run_id, filename):
@@ -66,22 +84,30 @@ def run_java(run_id, filename):
     print("JAVA RUNNER NAME:", runner_name)
     print("CONTAINER PATH TO COPY:", container_path)
 
+    # Verify file exists before attempting to copy
+    if not os.path.exists(container_path):
+        raise FileNotFoundError(f"Source file not found: {container_path}")
+
     try:
         # 1. create the Java runner container (but do not run it yet)
-        subprocess.run(
+        create_result = subprocess.run(
             ["docker", "create", "--name", runner_name,
              "java-runner", "sh", "-c",
              f"javac {filename} && java {filename.replace('.java','')}"],
-            check=True
+            capture_output=True, text=True, check=True
         )
+        print(f"Container created: {runner_name}")
 
         # 2. Copy the user's Java file from API container into runner
-        subprocess.run(
+        copy_result = subprocess.run(
             ["docker", "cp",
              container_path,
              f"{runner_name}:/work/{filename}"],
-            check=True
+            capture_output=True, text=True, check=True
         )
+        print(f"File copied successfully to {runner_name}:/work/{filename}")
+        if copy_result.stderr:
+            print(f"Copy stderr: {copy_result.stderr}")
 
         # 3. Start the container and capture output
         proc = subprocess.run(
@@ -93,7 +119,7 @@ def run_java(run_id, filename):
 
     finally:
         # 4. Clean up runner container
-        subprocess.run(["docker", "rm", "-f", runner_name])
+        subprocess.run(["docker", "rm", "-f", runner_name], capture_output=True)
 
 
 def extract_code_only(text: str) -> str:
@@ -153,30 +179,42 @@ async def repair(run_id: str, req: RepairRequest):
         raise HTTPException(404, "No file in run directory")
 
     filename = files[0]
+    max_attempts = 3
 
-    for iteration in range(3):
-        # 1. RUN USER CODE
-        if req.language == "python":
-            ret, out, err = run_python(run_id, filename)  # starts python-runner container
-            print("RUN OUTPUT:\n", out, "ERR:\n", err, ret)
-        else:
-            ret, out, err = run_java(run_id, filename)  # starts java-runner container
+    # Save original code before any modifications
+    source_path = os.path.join(run_dir, filename)
+    with open(source_path) as f:
+        original_code = f.read()
 
-        # 2. CHECK FOR SUCCESS - exit code == 0 and expected output matches or not provided
-        if ret == 0:
-            if req.expected_output is None or out.strip() == req.expected_output.strip():
-                return {
-                    "status": "success",
-                    "iterations": iteration + 1,
-                    "output": out,
-                }
+    # Initial run to check if code is already working
+    if req.language == "python":
+        ret, out, err = run_python(run_id, filename)
+        print(f"INITIAL RUN - RET: {ret}, OUT:\n{out}\nERR:\n{err}")
+    else:
+        ret, out, err = run_java(run_id, filename)
+        print(f"INITIAL RUN - RET: {ret}, OUT:\n{out}\nERR:\n{err}")
 
-        # 3. LOAD SOURCE
+    # Check if already successful
+    if ret == 0 and (req.expected_output is None or out.strip() == req.expected_output.strip()):
+        return {
+            "status": "success",
+            "iterations": 0,
+            "output": out,
+            "message": "Code was already working",
+            "original_code": original_code,
+            "fixed_code": original_code
+        }
+
+    # Attempt fixes
+    for attempt in range(1, max_attempts + 1):
+        print(f"\n=== FIX ATTEMPT {attempt}/{max_attempts} ===")
+
+        # Load current source
         source_path = os.path.join(run_dir, filename)
         with open(source_path) as f:
             src = f.read()
 
-        # 4. BUILD LLM PROMPT
+        # Build LLM prompt
         prompt = f"""
 You are a code auto-repair tool.
 
@@ -209,16 +247,52 @@ EXPECTED OUTPUT:
 RETURN ONLY THE FULL FIXED CODE BELOW NOTHING ELSE:
 """
 
-        # 5. Call LLM
+        # Call LLM to fix
         raw = call_llm(prompt)
-        print("LLM RAW OUTPUT:\n", raw)  # for debugging
+        print(f"LLM RAW OUTPUT:\n{raw}")
 
-        # Extract only the code from LLM response
+        # Extract and save fixed code
         new_code = extract_code_only(raw)
-        print("CLEANED CODE:\n", new_code)
+        print(f"CLEANED CODE:\n{new_code}")
 
-        # overwrite user's file
         with open(source_path, "w") as f:
             f.write(new_code)
 
-    return {"status": "failed", "error": "Max iterations reached"}
+        # Verify the fix by running again
+        if req.language == "python":
+            ret, out, err = run_python(run_id, filename)
+            print(f"VERIFICATION RUN {attempt} - RET: {ret}, OUT:\n{out}\nERR:\n{err}")
+        else:
+            ret, out, err = run_java(run_id, filename)
+            print(f"VERIFICATION RUN {attempt} - RET: {ret}, OUT:\n{out}\nERR:\n{err}")
+
+        # Check if fix was successful
+        if ret == 0 and (req.expected_output is None or out.strip() == req.expected_output.strip()):
+            # Read the fixed code
+            with open(source_path) as f:
+                fixed_code = f.read()
+
+            return {
+                "status": "success",
+                "iterations": attempt,
+                "output": out,
+                "message": f"Fixed after {attempt} attempt(s)",
+                "original_code": original_code,
+                "fixed_code": fixed_code
+            }
+
+    # Max attempts reached, return current state
+    # Read the last attempted fix
+    with open(source_path) as f:
+        fixed_code = f.read()
+
+    return {
+        "status": "failed",
+        "iterations": max_attempts,
+        "last_output": out,
+        "last_error": err,
+        "last_exit_code": ret,
+        "message": f"Could not fix after {max_attempts} attempts",
+        "original_code": original_code,
+        "fixed_code": fixed_code
+    }
