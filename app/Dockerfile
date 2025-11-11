@@ -12,6 +12,7 @@ RUN apt-get update && \
 # Install Python dependencies
 RUN pip install fastapi uvicorn python-multipart gitpython requests
 
+RUN pip install supabase
 # Copy the app code
 COPY . .
 
