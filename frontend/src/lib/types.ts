@@ -12,10 +12,11 @@ export interface Project {
   id: string;
   name: string;
   description?: string;
-  language: ProjectLanguage;
-  createdAt: Date;
-  updatedAt: Date;
-  files: FileNode[];
+  language?: ProjectLanguage;
+  repository?: string;
+  createdAt: Date | string;
+  updatedAt?: Date;
+  files?: FileNode[];
   issues: Issue[];
 }
 
@@ -31,35 +32,36 @@ export interface FileNode {
 
 export interface Issue {
   id: string;
-  projectId: string;
+  projectId?: string;
   title: string;
   description: string;  // User's description of the problem
   mode: IssueMode;      // 'basic' for syntax fixing, 'expected_output' for custom behavior
   expectedOutput?: string;  // Natural language description of expected behavior (when mode is 'expected_output')
-  status: IssueStatus;
+  status: IssueStatus | 'pending';
   maxIterations: number;
   currentIteration: number;
   iterations: Iteration[];
+  selectedFiles?: string[];  // File names selected for this issue
   githubIssueUrl?: string;  // Link to GitHub issue if connected
   githubIssueNumber?: number;  // GitHub issue number (e.g., 42)
   githubPrUrl?: string;  // Link to GitHub PR if created
   githubPrNumber?: number;  // GitHub PR number
   githubPrMerged?: boolean;  // True if PR was merged
-  createdAt: Date;
-  updatedAt: Date;
+  createdAt: Date | string;
+  updatedAt?: Date;
 }
 
 export interface Iteration {
   id: string;
-  issueId: string;
+  issueId?: string;
   number: number;  // 1-indexed
   status: IterationStatus;
   reasoning: string;  // AI's explanation of what it's doing
   changes: CodeChange[];
   runtimeOutput: string;  // stdout + stderr
   exitCode?: number;
-  startedAt: Date;
-  completedAt?: Date;
+  startedAt: Date | string;
+  completedAt?: Date | string;
 }
 
 export interface CodeChange {

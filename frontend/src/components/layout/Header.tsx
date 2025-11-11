@@ -1,11 +1,14 @@
-import { Code2, LogIn, Menu } from "lucide-react";
+import { Code2, LogOut, Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface HeaderProps {
   onMenuClick?: () => void;
 }
 
 export function Header({ onMenuClick }: HeaderProps) {
+  const { user, signOut } = useAuth();
+
   return (
     <header className="border-b bg-card sticky top-0 z-10">
       <div className="flex h-11 items-center px-3 gap-3">
@@ -25,10 +28,17 @@ export function Header({ onMenuClick }: HeaderProps) {
         </div>
 
         <div className="ml-auto flex items-center gap-2">
-          <Button variant="ghost" size="sm" className="h-8">
-            <LogIn className="h-3.5 w-3.5 mr-1.5" />
-            <span className="hidden sm:inline text-xs">Login</span>
-          </Button>
+          {user && (
+            <>
+              <span className="text-xs text-muted-foreground hidden sm:inline">
+                {user.email}
+              </span>
+              <Button variant="ghost" size="sm" className="h-8" onClick={signOut}>
+                <LogOut className="h-3.5 w-3.5 mr-1.5" />
+                <span className="hidden sm:inline text-xs">Logout</span>
+              </Button>
+            </>
+          )}
         </div>
       </div>
     </header>

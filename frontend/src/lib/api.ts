@@ -17,8 +17,8 @@ import type {
 } from "./types";
 
 // Configuration
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-const WS_BASE_URL = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8000";
+const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+const WS_BASE_URL = import.meta.env.VITE_WS_URL || "ws://localhost:8000";
 
 // Helper function for fetch with error handling
 async function fetchAPI<T>(
@@ -201,4 +201,60 @@ export class IterationWebSocket {
 
 export function createIterationWebSocket(issueId: string): IterationWebSocket {
   return new IterationWebSocket(issueId);
+}
+
+// Bug Fixer API
+
+export interface UploadResponse {
+  run_id: string;
+  filename: string;
+}
+
+export interface RepairRequest {
+  language: string;
+  expected_output?: string;
+}
+
+export interface RepairResponse {
+  status: "success" | "failed";
+  iterations: number;
+  output?: string;
+  message?: string;
+  last_output?: string;
+  last_error?: string;
+  last_exit_code?: number;
+  original_code?: string;
+  fixed_code?: string;
+}
+
+export async function uploadFile(file: File, language: string): Promise<UploadResponse> {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const response = await fetch(`${API_BASE_URL}/upload?language=${language}`, {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!response.ok) {
+    throw new Error(`Upload failed: ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+export async function repairCode(runId: string, request: RepairRequest): Promise<RepairResponse> {
+  const response = await fetch(`${API_BASE_URL}/repair/${runId}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(request),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Repair failed: ${response.statusText}`);
+  }
+
+  return response.json();
 }

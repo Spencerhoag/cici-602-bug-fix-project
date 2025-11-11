@@ -11,9 +11,36 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { mockProjects } from "@/lib/mock-data";
 import type { Iteration } from "@/lib/types";
+import { uploadFile, repairCode } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
+import { AuthPage } from "@/components/auth/AuthPage";
 
 export default function App() {
-  const [projects] = useState(mockProjects);
+  const { user, loading } = useAuth();
+
+  // Show loading state while checking auth
+  if (loading) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-background">
+        <div className="text-center space-y-3">
+          <div className="h-8 w-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto" />
+          <p className="text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show auth page if not logged in
+  if (!user) {
+    return <AuthPage />;
+  }
+
+  // User is authenticated, show main app
+  return <MainApp />;
+}
+
+function MainApp() {
+  const [projects, setProjects] = useState(mockProjects);
   const [selectedProjectId, setSelectedProjectId] = useState(projects[0]?.id);
   const [selectedIssueId, setSelectedIssueId] = useState<string>();
   const [createProjectOpen, setCreateProjectOpen] = useState(false);
@@ -22,6 +49,9 @@ export default function App() {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [collapsedIterations, setCollapsedIterations] = useState<Set<string>>(new Set());
   const [showOpenPR, setShowOpenPR] = useState(false);
+  const [projectFiles, setProjectFiles] = useState<Record<string, Record<string, File>>>({});  // projectId -> fileName -> File
+  const [issueRunIds, setIssueRunIds] = useState<Record<string, string>>({});
+  const [isProcessing, setIsProcessing] = useState(false);
 
   const selectedProject = projects.find((p) => p.id === selectedProjectId);
   const selectedIssue = selectedProject?.issues.find(
@@ -51,12 +81,135 @@ export default function App() {
     setCreateIssueOpen(true);
   };
 
-  const handleStartAI = () => {
-    console.log("Starting AI iteration...");
+  const handleStartAI = async () => {
+    if (!selectedIssueId || !selectedProjectId) return;
+
+    // Get the files selected for this issue
+    const issueFileNames = selectedIssue?.selectedFiles || [];
+    if (issueFileNames.length === 0) {
+      alert("No files selected for this issue");
+      return;
+    }
+
+    const files = projectFiles[selectedProjectId] || {};
+    const file = files[issueFileNames[0]]; // For now, use the first selected file
+
+    if (!file) {
+      alert("File not found in project");
+      return;
+    }
+
+    setIsProcessing(true);
+
+    // Update issue status to in_progress
+    setProjects((prev) =>
+      prev.map((project) => ({
+        ...project,
+        issues: project.issues.map((issue) =>
+          issue.id === selectedIssueId
+            ? { ...issue, status: "in_progress" as const }
+            : issue
+        ),
+      }))
+    );
+
+    try {
+      // Upload the file
+      const uploadResponse = await uploadFile(file, "python");
+      console.log("Upload response:", uploadResponse);
+
+      // Store the run_id
+      setIssueRunIds((prev) => ({
+        ...prev,
+        [selectedIssueId]: uploadResponse.run_id,
+      }));
+
+      // Repair the code
+      const repairResponse = await repairCode(uploadResponse.run_id, {
+        language: "python",
+        expected_output: selectedIssue?.mode === "expected_output" ? selectedIssue.expectedOutput : undefined,
+      });
+      console.log("Repair response:", repairResponse);
+
+      // Create a simple unified diff
+      const createDiff = (original: string, fixed: string, filename: string) => {
+        const originalLines = original.split("\n");
+        const fixedLines = fixed.split("\n");
+        let diff = `--- a/${filename}\n+++ b/${filename}\n@@ -1,${originalLines.length} +1,${fixedLines.length} @@\n`;
+
+        const maxLines = Math.max(originalLines.length, fixedLines.length);
+        for (let i = 0; i < maxLines; i++) {
+          const origLine = originalLines[i];
+          const fixedLine = fixedLines[i];
+
+          if (origLine !== fixedLine) {
+            if (origLine !== undefined) diff += `-${origLine}\n`;
+            if (fixedLine !== undefined) diff += `+${fixedLine}\n`;
+          } else if (origLine !== undefined) {
+            diff += ` ${origLine}\n`;
+          }
+        }
+
+        return diff;
+      };
+
+      // Create iteration with the results
+      const iterationId = `iteration-${Date.now()}`;
+      const newIteration: Iteration = {
+        id: iterationId,
+        number: (selectedIssue?.iterations.length || 0) + 1,
+        status: repairResponse.status === "success" ? "completed" : "failed",
+        startedAt: new Date().toISOString(),
+        completedAt: new Date().toISOString(),
+        reasoning: repairResponse.message || `Attempted to fix code. ${repairResponse.status === "success" ? "Success!" : "Failed after " + repairResponse.iterations + " attempts."}`,
+        changes: repairResponse.original_code && repairResponse.fixed_code ? [{
+          id: `change-${Date.now()}`,
+          filePath: file.name,
+          diff: createDiff(repairResponse.original_code, repairResponse.fixed_code, file.name),
+        }] : [],
+        runtimeOutput: repairResponse.output || repairResponse.last_output || repairResponse.last_error || "",
+        exitCode: repairResponse.status === "success" ? 0 : (repairResponse.last_exit_code || 1),
+      };
+
+      // Add iteration to issue and update status
+      setProjects((prev) =>
+        prev.map((project) => ({
+          ...project,
+          issues: project.issues.map((issue) =>
+            issue.id === selectedIssueId
+              ? {
+                  ...issue,
+                  status: repairResponse.status === "success" ? "solved" : "failed",
+                  iterations: [...issue.iterations, newIteration],
+                  currentIteration: (issue.currentIteration || 0) + 1,
+                }
+              : issue
+          ),
+        }))
+      );
+    } catch (error) {
+      console.error("Error:", error);
+      alert(`Error: ${error instanceof Error ? error.message : "Unknown error"}`);
+
+      // Update issue status to failed
+      setProjects((prev) =>
+        prev.map((project) => ({
+          ...project,
+          issues: project.issues.map((issue) =>
+            issue.id === selectedIssueId
+              ? { ...issue, status: "failed" as const }
+              : issue
+          ),
+        }))
+      );
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const handleStopAI = () => {
     console.log("Stopping AI iteration...");
+    setIsProcessing(false);
   };
 
   const toggleIteration = (iterationId: string) => {
@@ -175,21 +328,22 @@ export default function App() {
                   </div>
 
                   {/* Start/Stop AI Button */}
-                  {selectedIssue.status === "in_progress" ? (
+                  {isProcessing || selectedIssue.status === "in_progress" ? (
                     <Button
                       size="sm"
                       variant="destructive"
                       onClick={handleStopAI}
                       className="w-full md:w-auto"
+                      disabled={isProcessing}
                     >
                       <StopCircle className="h-4 w-4 mr-2" />
-                      Stop AI
+                      {isProcessing ? "Processing..." : "Stop AI"}
                     </Button>
                   ) : (
                     <Button
                       size="sm"
                       onClick={handleStartAI}
-                      disabled={selectedIssue.status === "solved"}
+                      disabled={selectedIssue.status === "solved" || isProcessing}
                       className="w-full md:w-auto"
                     >
                       <Play className="h-4 w-4 mr-2" />
@@ -404,14 +558,74 @@ export default function App() {
         onOpenChange={setCreateProjectOpen}
         onCreateProject={(data) => {
           console.log("Create project:", data);
+          const projectId = `project-${Date.now()}`;
+          const newProject = {
+            id: projectId,
+            name: data.name,
+            description: data.description || "",
+            repository: data.repository,
+            issues: [],
+            createdAt: new Date().toISOString(),
+          };
+          setProjects((prev) => [...prev, newProject]);
+
+          // Store project files
+          if (data.files && data.files.length > 0) {
+            const fileMap: Record<string, File> = {};
+            data.files.forEach((file) => {
+              fileMap[file.name] = file;
+            });
+            setProjectFiles((prev) => ({
+              ...prev,
+              [projectId]: fileMap,
+            }));
+          }
+
+          setSelectedProjectId(projectId);
         }}
       />
 
       <CreateIssue
         open={createIssueOpen}
         onOpenChange={setCreateIssueOpen}
-        onCreateIssue={(data) => {
+        projectFiles={
+          createIssueProjectId && projectFiles[createIssueProjectId]
+            ? Object.keys(projectFiles[createIssueProjectId])
+            : []
+        }
+        onCreateIssue={(data: any) => {
           console.log("Create issue:", data, "for project:", createIssueProjectId);
+          if (!createIssueProjectId) return;
+
+          // Generate a unique issue ID
+          const issueId = `issue-${Date.now()}`;
+
+          // Create the new issue
+          const newIssue = {
+            id: issueId,
+            title: data.title,
+            description: data.description || "",
+            status: "pending" as const,
+            mode: data.mode,
+            expectedOutput: data.expectedOutput,
+            maxIterations: data.maxIterations,
+            currentIteration: 0,
+            iterations: [],
+            selectedFiles: data.selectedFiles || [],
+            createdAt: new Date().toISOString(),
+          };
+
+          // Add the issue to the project
+          setProjects((prev) =>
+            prev.map((project) =>
+              project.id === createIssueProjectId
+                ? { ...project, issues: [...project.issues, newIssue] }
+                : project
+            )
+          );
+
+          // Select the new issue
+          setSelectedIssueId(issueId);
         }}
       />
     </div>

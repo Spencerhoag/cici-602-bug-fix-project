@@ -16,21 +16,24 @@ import { IssueMode } from "@/lib/types";
 interface CreateIssueProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  projectFiles?: string[]; // List of file names in the project
   onCreateIssue: (data: {
     title: string;
     description: string;
     mode: IssueMode;
     expectedOutput?: string;
     maxIterations: number;
+    selectedFiles?: string[];
   }) => void;
 }
 
-export function CreateIssue({ open, onOpenChange, onCreateIssue }: CreateIssueProps) {
+export function CreateIssue({ open, onOpenChange, onCreateIssue, projectFiles }: CreateIssueProps) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [mode, setMode] = useState<IssueMode>("basic");
   const [expectedOutput, setExpectedOutput] = useState("");
   const [maxIterations, setMaxIterations] = useState(5);
+  const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
 
   const handleSubmit = () => {
     onCreateIssue({
@@ -39,6 +42,7 @@ export function CreateIssue({ open, onOpenChange, onCreateIssue }: CreateIssuePr
       mode,
       expectedOutput: mode === "expected_output" ? expectedOutput : undefined,
       maxIterations,
+      selectedFiles,
     });
     // Reset form
     setTitle("");
@@ -46,15 +50,25 @@ export function CreateIssue({ open, onOpenChange, onCreateIssue }: CreateIssuePr
     setMode("basic");
     setExpectedOutput("");
     setMaxIterations(5);
+    setSelectedFiles([]);
     onOpenChange(false);
+  };
+
+  const handleFileToggle = (fileName: string) => {
+    setSelectedFiles(prev =>
+      prev.includes(fileName)
+        ? prev.filter(f => f !== fileName)
+        : [...prev, fileName]
+    );
   };
 
   const isFormValid = () => {
     if (!title) return false;
+    if (!selectedFiles.length) return false; // At least one file is required
     if (mode === "expected_output") {
       return !!description && !!expectedOutput;
     }
-    return true; // Basic mode only needs title
+    return true; // Basic mode only needs title and files
   };
 
   return (
@@ -75,6 +89,41 @@ export function CreateIssue({ open, onOpenChange, onCreateIssue }: CreateIssuePr
               value={title}
               onChange={(e) => setTitle(e.target.value)}
             />
+          </div>
+
+          <div>
+            <label className="text-sm font-medium mb-2 block">
+              Select Files to Fix <span className="text-destructive">*</span>
+            </label>
+            {!projectFiles || projectFiles.length === 0 ? (
+              <div className="border border-input rounded-md p-4 text-center text-sm text-muted-foreground">
+                No files in this project. Please add files when creating the project.
+              </div>
+            ) : (
+              <div className="border border-input rounded-md p-3 max-h-48 overflow-y-auto">
+                <div className="space-y-2">
+                  {projectFiles.map((fileName) => (
+                    <label
+                      key={fileName}
+                      className="flex items-center gap-2 p-2 hover:bg-accent rounded cursor-pointer"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedFiles.includes(fileName)}
+                        onChange={() => handleFileToggle(fileName)}
+                        className="h-4 w-4"
+                      />
+                      <span className="text-sm font-mono">{fileName}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+            {selectedFiles.length > 0 && (
+              <p className="text-xs text-muted-foreground mt-1">
+                {selectedFiles.length} file(s) selected
+              </p>
+            )}
           </div>
 
           <div>

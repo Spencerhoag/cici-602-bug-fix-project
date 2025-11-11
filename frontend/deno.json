@@ -7,7 +7,8 @@
   "imports": {
     "react": "npm:react@^18.3.1",
     "react-dom": "npm:react-dom@^18.3.1",
-    "vite": "npm:vite@^5.4.11"
+    "vite": "npm:vite@^5.4.11",
+    "@supabase/supabase-js": "npm:@supabase/supabase-js@^2.39.0"
   },
   "compilerOptions": {
     "jsx": "react-jsx",
