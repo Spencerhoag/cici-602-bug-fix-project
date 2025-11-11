@@ -9,8 +9,8 @@ RUN apt-get update && \
     apt-get install -y docker.io && \
     apt-get clean
 
-# Install Python dependencies
-RUN pip install fastapi uvicorn python-multipart gitpython requests
+# Install Python dependencies # EDDIE UPDATE I ADDED ONE
+RUN pip install fastapi uvicorn python-multipart gitpython requests supabase
 
 # Copy the app code
 COPY . .

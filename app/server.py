@@ -6,8 +6,10 @@ import re
 from pathlib import Path
 from llm_client import call_llm
 
-# Eddie import
-import supabase as supabase
+# Eddie imports
+from fastapi.responses import PlainTextResponse
+from supabase import create_client, Client
+
 
 
 app = FastAPI()
@@ -17,7 +19,7 @@ WORKDIR = "/repairs"
 @app.get("/getitbruh")
 def nowgetit() -> str:
     #print("hi")
-    return hiya()
+    return "Wassup"
 
 class RepairRequest(BaseModel):
     expected_output: Optional[str] = None
@@ -145,7 +147,7 @@ async def upload(file: UploadFile = File(...), language: str = "python"):
     filename = file.filename
     dest_path = os.path.join(run_dir, filename)
 
-    with open(dest_path, "wb") as f:
+    with (open(dest_path, "wb") as f):
         f.write(await file.read())
 
         # Proof of concept
@@ -155,15 +157,12 @@ async def upload(file: UploadFile = File(...), language: str = "python"):
         Dburl: str = "https://jbsqfajyjowjclrpifqh.supabase.co"
         # You can find the below in "Project Settings" and then "API Keys"
         Dbkey: str = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Impic3FmYWp5am93amNscnBpZnFoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI0Nzk4NjIsImV4cCI6MjA3ODA1NTg2Mn0.OBMv1oJp7qqFbZn8gxA_Ov7ue2xN6YYa-m2rLrDrmyc"
-        # I don't know of a better way to do this right now, so I did it this way. It's a string
-        # With all of the contents of the file.
-        fileContents: str = ""
-        line: str = file.read()
-        while (line != ""):
-            fileContents += line
-        ourDb: Client = supabase.create_client(Dburl, Dbkey)
-        # The below should add a new row to the Db.
-        ourDb.table("SupabaseAPIExperiments").insert({"id": run_id, "created_at": fileContents})
+        # I don't know how to read the contents of a file as a string, so
+        # I have a stand in below
+        fileContents: str = "print(\"Bruh\")"
+        ourDb: Client = create_client(Dburl, Dbkey)
+        # The below should add a new row to the Db. This needs to be changed.
+        ourDb.table("SupabaseAPIExperiments").insert({"id": int(run_id, 16) // 1000000000000000000000, "created_at": fileContents}).execute()
 
     return {"run_id": run_id, "filename": filename}
 
@@ -254,7 +253,7 @@ RETURN ONLY THE FULL FIXED CODE BELOW NOTHING ELSE:
             Dburl : str = "https://jbsqfajyjowjclrpifqh.supabase.co"
             # You can find the below in "Project Settings" and then "API Keys"
             Dbkey : str = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Impic3FmYWp5am93amNscnBpZnFoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI0Nzk4NjIsImV4cCI6MjA3ODA1NTg2Mn0.OBMv1oJp7qqFbZn8gxA_Ov7ue2xN6YYa-m2rLrDrmyc"
-            ourDb : Client = supabase.create_client(Dburl, Dbkey)
+            ourDb : Client = create_client(Dburl, Dbkey)
             # The below line SHOULD update the db row for the file with the new text/code
             ourDb.table("SupabaseAPIExperiments").update({"created_at": new_code}).eq("id", int(filename)).execute()
 
