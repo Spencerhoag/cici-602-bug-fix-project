@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { Upload, Play, Check, X, AlertCircle } from "lucide-react";
+import { Upload, Play, Check, AlertCircle } from "lucide-react";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Badge } from "./ui/badge";

@@ -22,7 +22,6 @@ interface CreateIssueProps {
     description: string;
     mode: IssueMode;
     expectedOutput?: string;
-    maxIterations: number;
     selectedFiles?: string[];
   }) => void;
 }
@@ -32,7 +31,6 @@ export function CreateIssue({ open, onOpenChange, onCreateIssue, projectFiles }:
   const [description, setDescription] = useState("");
   const [mode, setMode] = useState<IssueMode>("basic");
   const [expectedOutput, setExpectedOutput] = useState("");
-  const [maxIterations, setMaxIterations] = useState(5);
   const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
 
   const handleSubmit = () => {
@@ -41,7 +39,6 @@ export function CreateIssue({ open, onOpenChange, onCreateIssue, projectFiles }:
       description,
       mode,
       expectedOutput: mode === "expected_output" ? expectedOutput : undefined,
-      maxIterations,
       selectedFiles,
     });
     // Reset form
@@ -49,7 +46,6 @@ export function CreateIssue({ open, onOpenChange, onCreateIssue, projectFiles }:
     setDescription("");
     setMode("basic");
     setExpectedOutput("");
-    setMaxIterations(5);
     setSelectedFiles([]);
     onOpenChange(false);
   };
@@ -100,22 +96,31 @@ export function CreateIssue({ open, onOpenChange, onCreateIssue, projectFiles }:
                 No files in this project. Please add files when creating the project.
               </div>
             ) : (
-              <div className="border border-input rounded-md p-3 max-h-48 overflow-y-auto">
-                <div className="space-y-2">
-                  {projectFiles.map((fileName) => (
-                    <label
-                      key={fileName}
-                      className="flex items-center gap-2 p-2 hover:bg-accent rounded cursor-pointer"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selectedFiles.includes(fileName)}
-                        onChange={() => handleFileToggle(fileName)}
-                        className="h-4 w-4"
-                      />
-                      <span className="text-sm font-mono">{fileName}</span>
-                    </label>
-                  ))}
+              <div className="border border-input rounded-md p-3 max-h-64 overflow-y-auto">
+                <div className="space-y-1">
+                  {projectFiles.map((fileName) => {
+                    // Check if this is a nested file path
+                    const isNested = fileName.includes('/');
+                    const indentLevel = isNested ? (fileName.split('/').length - 1) : 0;
+
+                    return (
+                      <label
+                        key={fileName}
+                        className="flex items-center gap-2 p-2 hover:bg-accent rounded cursor-pointer"
+                        style={{ paddingLeft: `${8 + indentLevel * 16}px` }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedFiles.includes(fileName)}
+                          onChange={() => handleFileToggle(fileName)}
+                          className="h-4 w-4 flex-shrink-0"
+                        />
+                        <span className="text-xs font-mono text-muted-foreground truncate" title={fileName}>
+                          {fileName}
+                        </span>
+                      </label>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -185,32 +190,6 @@ export function CreateIssue({ open, onOpenChange, onCreateIssue, projectFiles }:
               </div>
             </>
           )}
-
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <label className="text-sm font-medium">Max Iterations</label>
-              <Input
-                type="number"
-                min="1"
-                max="20"
-                value={maxIterations}
-                onChange={(e) => setMaxIterations(parseInt(e.target.value) || 1)}
-                className="w-20 h-8 text-center"
-              />
-            </div>
-            <input
-              type="range"
-              min="1"
-              max="20"
-              value={maxIterations}
-              onChange={(e) => setMaxIterations(parseInt(e.target.value))}
-              className="w-full h-2 bg-secondary rounded-lg appearance-none cursor-pointer accent-primary"
-            />
-            <div className="flex justify-between text-xs text-muted-foreground mt-1">
-              <span>1</span>
-              <span>20</span>
-            </div>
-          </div>
         </div>
 
         <DialogFooter className="flex-col sm:flex-row gap-2">
