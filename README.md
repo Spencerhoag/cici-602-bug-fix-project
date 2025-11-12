@@ -1,79 +1,209 @@
 # CICI - AI-Powered Code Bug Fixer
 
-> **Status**: Idea Phase - Planning & Design
+An automated bug-fixing application with a React frontend and FastAPI backend that uses AI models to iteratively debug and fix code by running it in safe, containerized environments.
 
-## How to Run
-1. Go to root directory
-2. docker compose build app - Builds container (only have to do this once or if changes are made)
-3. cd into “runners”
-4. docker build -t python-runner -f python.Dockerfile . | docker build -t java-runner -f runners/java.Dockerfile .
- - Builds python/java runner containers (only have to do this once unless changes are made to the language runner Dockerfile)
-5. Docker compose up -d - Starts containers
-6. docker exec -it ollama ollama pull codellama:7b-instruct - Pull code llama llm (only have to do this on first build)
-8. http://localhost:8000/docs - Opens swagger ui
-9. docker logs -f code-fixer-api    - Access logs for debugging
+## Quick Start with Docker
 
-## Overview 
+The easiest way to run CICI is using Docker Compose:
 
-An automated bug-fixing application that uses AI models to iteratively debug and fix code by running it in a safe, containerized environment. The system analyzes errors, applies fixes, and repeats until the code runs successfully.
+```bash
+# 1. Set up environment variables (in project root)
+cp frontend/.env.example .env
+# Edit .env with your Supabase credentials
 
-## Concept
+# 2. Set up Supabase database
+# See frontend/SUPABASE_SETUP_GUIDE.md
 
-Users upload their buggy code along with the expected output. The application:
-1. Runs the code in a Docker container
-2. Captures any errors or incorrect output
-3. Uses an AI model to analyze and fix the issues
-4. Repeats the process until the code executes without errors
-5. Returns the corrected code to the user
+# 3. Build and run all services
+docker-compose up --build
+```
 
-## Planned Features
+**Services:**
+- Frontend: http://localhost:3000
+- Backend API: http://localhost:8000
+- Ollama (LLM): http://localhost:11434
+
+For detailed setup instructions, see [DOCKER_SETUP.md](./DOCKER_SETUP.md)
+
+## Manual Setup (Development)
+
+### Backend
+
+```bash
+cd app
+pip install -r requirements.txt
+python server.py
+```
+
+Access API docs at http://localhost:8000/docs
+
+### Frontend
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Access UI at http://localhost:5173
+
+### Language Runners
+
+Build the Docker containers for code execution:
+
+```bash
+cd runners
+docker build -t python-runner -f python.Dockerfile .
+docker build -t java-runner -f java.Dockerfile .
+```
+
+### Ollama Setup
+
+```bash
+# Pull the LLM model
+docker exec -it ollama ollama pull codellama:7b-instruct
+```
+
+## Architecture
+
+```
+┌─────────────┐      ┌──────────────┐      ┌─────────────┐
+│   React     │─────▶│   FastAPI    │─────▶│   Ollama    │
+│  Frontend   │◀─────│   Backend    │◀─────│   (LLM)     │
+└─────────────┘      └──────────────┘      └─────────────┘
+                            │
+                            ▼
+                     ┌──────────────┐
+                     │   Docker     │
+                     │   Runners    │
+                     │ (Python/Java)│
+                     └──────────────┘
+```
+
+## Features
+
+### Current Features
+- **Web UI**: Modern React interface with authentication
+- **Project Management**: Upload and manage code projects
+- **Issue Tracking**: Create and track bug fix requests
+- **AI-Powered Fixes**: Automatic code repair using LLM
+- **Secure Execution**: Code runs in isolated Docker containers
+- **Multi-language**: Support for Python and Java
 
 ### Code Upload Options
-- **Single File**: Upload individual source files
-- **Zip Archive**: Upload multiple files as a compressed archive
-- **GitHub Repository**: Provide a public repository URL for cloning
+- Single file upload
+- Zip archive (preserves folder structure)
+- GitHub repository URL (coming soon)
 
-### Error Detection & Fixing
-- **Syntax Errors**: Automatic detection and correction of compilation/interpretation errors
-- **Runtime Errors**: Fix crashes, exceptions, and runtime failures
-- **Semantic Errors**: Compare actual output against user-provided expected output and fix logical issues
+### Error Detection
+- Syntax errors
+- Runtime errors and exceptions
+- Semantic errors (with expected output comparison)
 
-### Supported Languages
-- Python
-- Java
-- C
+## Tech Stack
 
-## Technical Approach
+**Frontend:**
+- React 18 with TypeScript
+- Vite for build tooling
+- TailwindCSS for styling
+- Supabase for authentication and database
 
-### AI Models (Under Evaluation)
-- Locally runnable models (for privacy and cost)
-- Free-tier options like Google Gemini
-- Other open-source code models
+**Backend:**
+- FastAPI (Python)
+- Docker for code execution
+- Ollama for LLM inference
+- WebSocket support for real-time updates
 
-### Execution Environment
-- **Docker**: Isolated containers for safe code execution
-- Each code submission runs in a fresh container
-- Automatic cleanup after processing
+**Infrastructure:**
+- Docker & Docker Compose
+- Nginx (production frontend server)
+- Supabase (PostgreSQL + Auth)
 
-### Limitations
-- **No Secrets Management**: This tool is not designed to handle API keys, credentials, or sensitive data
-- **Public Repositories Only**: GitHub integration limited to public repos
+## Database
 
-## Use Cases
+The app uses Supabase (PostgreSQL) with these tables:
+- `users` - User accounts
+- `projects` - Code projects
+- `project_files` - File metadata
+- `issues` - Bug fix requests and results
 
-- Students debugging homework assignments
-- Developers quickly fixing small code snippets
-- Learning from AI-generated fixes
-- Rapid prototyping and testing
+See [frontend/SUPABASE_SETUP_GUIDE.md](./frontend/SUPABASE_SETUP_GUIDE.md) for setup instructions.
 
-## Future Considerations
+## Configuration
 
-- Support for additional programming languages
-- GitHub issue integration
-- Batch processing of multiple files
-- Enhanced semantic error detection
-- Code quality and optimization suggestions
+### Environment Variables
 
----
+**Root** (`.env` in project root):
+```env
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your-anon-key
+VITE_API_URL=http://localhost:8000
+VITE_WS_URL=ws://localhost:8000
+```
 
-**Note**: This project is in early conceptual stages. Features and specifications are subject to change.
+**Backend** (configure in `docker-compose.yml`):
+```yaml
+OLLAMA_HOST: http://ollama:11434
+```
+
+## Development
+
+### Debugging
+
+```bash
+# View logs
+docker-compose logs -f frontend
+docker-compose logs -f app
+docker-compose logs -f ollama
+
+# Access container
+docker exec -it cici-frontend sh
+docker exec -it code-fixer-api bash
+```
+
+### Testing
+
+```bash
+# Backend tests
+cd app
+pytest
+
+# Frontend tests
+cd frontend
+npm test
+```
+
+## Deployment
+
+For production deployment:
+
+1. Update environment variables for production
+2. Enable RLS on Supabase tables
+3. Configure CORS settings
+4. Set up proper SSL/TLS certificates
+5. Use production-grade secrets management
+
+## Limitations
+
+- No secrets management (don't upload API keys or credentials)
+- Public repositories only for GitHub integration
+- Maximum file size limits apply
+- LLM inference requires significant computational resources
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Submit a pull request
+
+## License
+
+[Add your license here]
+
+## Support
+
+For issues and questions:
+- Check [DOCKER_SETUP.md](./DOCKER_SETUP.md)
+- Check [frontend/SUPABASE_SETUP_GUIDE.md](./frontend/SUPABASE_SETUP_GUIDE.md)
+- Open an issue on GitHub

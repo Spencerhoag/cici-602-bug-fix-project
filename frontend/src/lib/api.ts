@@ -18,32 +18,8 @@ import type {
 
 // Configuration
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
-const WS_BASE_URL = import.meta.env.VITE_WS_URL || "ws://localhost:8000";
 
 // Helper function for fetch with error handling
-async function fetchAPI<T>(
-  endpoint: string,
-  options?: RequestInit
-): Promise<T> {
-  try {
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error(`API Error: ${response.statusText}`);
-    }
-
-    return await response.json();
-  } catch (error) {
-    console.error(`API request failed for ${endpoint}:`, error);
-    throw error;
-  }
-}
 
 // Projects API
 
@@ -55,7 +31,7 @@ export async function getProjects(): Promise<Project[]> {
   return Promise.resolve([]);
 }
 
-export async function getProject(id: string): Promise<Project> {
+export async function getProject(_id: string): Promise<Project> {
   // TODO: Replace with actual API call
   // return fetchAPI<Project>(`/api/projects/${id}`);
 
@@ -63,7 +39,7 @@ export async function getProject(id: string): Promise<Project> {
 }
 
 export async function createProject(
-  data: CreateProjectRequest
+  _data: CreateProjectRequest
 ): Promise<Project> {
   // TODO: Replace with actual API call
   // return fetchAPI<Project>('/api/projects', {
@@ -74,7 +50,7 @@ export async function createProject(
   throw new Error("Not implemented");
 }
 
-export async function deleteProject(id: string): Promise<void> {
+export async function deleteProject(_id: string): Promise<void> {
   // TODO: Replace with actual API call
   // await fetchAPI(`/api/projects/${id}`, { method: 'DELETE' });
 
@@ -83,21 +59,21 @@ export async function deleteProject(id: string): Promise<void> {
 
 // Issues API
 
-export async function getIssues(projectId: string): Promise<Issue[]> {
+export async function getIssues(_projectId: string): Promise<Issue[]> {
   // TODO: Replace with actual API call
   // return fetchAPI<Issue[]>(`/api/projects/${projectId}/issues`);
 
   return Promise.resolve([]);
 }
 
-export async function getIssue(issueId: string): Promise<Issue> {
+export async function getIssue(_issueId: string): Promise<Issue> {
   // TODO: Replace with actual API call
   // return fetchAPI<Issue>(`/api/issues/${issueId}`);
 
   throw new Error("Not implemented");
 }
 
-export async function createIssue(data: CreateIssueRequest): Promise<Issue> {
+export async function createIssue(_data: CreateIssueRequest): Promise<Issue> {
   // TODO: Replace with actual API call
   // return fetchAPI<Issue>(`/api/projects/${data.projectId}/issues`, {
   //   method: 'POST',
@@ -110,7 +86,7 @@ export async function createIssue(data: CreateIssueRequest): Promise<Issue> {
 // Iterations API
 
 export async function startIteration(
-  data: StartIterationRequest
+  _data: StartIterationRequest
 ): Promise<Iteration> {
   // TODO: Replace with actual API call
   // return fetchAPI<Iteration>(`/api/issues/${data.issueId}/start`, {
@@ -120,7 +96,7 @@ export async function startIteration(
   throw new Error("Not implemented");
 }
 
-export async function getIterations(issueId: string): Promise<Iteration[]> {
+export async function getIterations(_issueId: string): Promise<Iteration[]> {
   // TODO: Replace with actual API call
   // return fetchAPI<Iteration[]>(`/api/issues/${issueId}/iterations`);
 
@@ -144,22 +120,17 @@ export async function reviewChanges(
 export class IterationWebSocket {
   private ws: WebSocket | null = null;
   private issueId: string;
-  private onMessageCallback?: (data: unknown) => void;
-  private onErrorCallback?: (error: Event) => void;
 
   constructor(issueId: string) {
     this.issueId = issueId;
   }
 
   connect(
-    onMessage: (data: unknown) => void,
-    onError?: (error: Event) => void
+    _onMessage: (data: unknown) => void,
+    _onError?: (error: Event) => void
   ): void {
     // TODO: Replace with actual WebSocket connection
     // this.ws = new WebSocket(`${WS_BASE_URL}/ws/issues/${this.issueId}/stream`);
-
-    this.onMessageCallback = onMessage;
-    this.onErrorCallback = onError;
 
     // Mock implementation
     console.log(`WebSocket connecting to issue ${this.issueId}...`);

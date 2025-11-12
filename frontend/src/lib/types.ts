@@ -38,7 +38,6 @@ export interface Issue {
   mode: IssueMode;      // 'basic' for syntax fixing, 'expected_output' for custom behavior
   expectedOutput?: string;  // Natural language description of expected behavior (when mode is 'expected_output')
   status: IssueStatus | 'pending';
-  maxIterations: number;
   currentIteration: number;
   iterations: Iteration[];
   selectedFiles?: string[];  // File names selected for this issue
@@ -86,7 +85,6 @@ export interface CreateIssueRequest {
   description: string;
   mode: IssueMode;
   expectedOutput?: string;
-  maxIterations: number;
 }
 
 export interface StartIterationRequest {

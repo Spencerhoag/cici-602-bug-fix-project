@@ -1,4 +1,4 @@
-import type { Project, FileNode, Issue, Iteration, CodeChange } from "./types";
+import type { Project, FileNode, Issue, Iteration } from "./types";
 
 // Mock file tree for a Python project
 const pythonProjectFiles: FileNode[] = [
@@ -247,7 +247,6 @@ export const mockProjects: Project[] = [
         mode: "expected_output",
         expectedOutput: "The program should raise a TypeError when non-numeric values are passed",
         status: "solved",
-        maxIterations: 5,
         currentIteration: 1,
         iterations: [completedIterationApproved],
         githubIssueUrl: "https://github.com/example/calculator/issues/42",
@@ -266,7 +265,6 @@ export const mockProjects: Project[] = [
         mode: "expected_output",
         expectedOutput: "Log each validation call with timestamp",
         status: "failed",
-        maxIterations: 3,
         currentIteration: 1,
         iterations: [completedIterationDenied],
         githubIssueUrl: "https://github.com/example/calculator/issues/56",
@@ -281,7 +279,6 @@ export const mockProjects: Project[] = [
         description: "",
         mode: "basic",
         status: "in_progress",
-        maxIterations: 3,
         currentIteration: 1,
         iterations: [runningIteration],
         createdAt: new Date(),
@@ -305,7 +302,6 @@ export const mockProjects: Project[] = [
         description: "",
         mode: "basic",
         status: "failed",
-        maxIterations: 5,
         currentIteration: 2,
         iterations: [failedIteration],
         createdAt: new Date("2025-11-08T14:00:00"),
@@ -319,7 +315,6 @@ export const mockProjects: Project[] = [
         mode: "expected_output",
         expectedOutput: "All unit tests should pass",
         status: "solved",
-        maxIterations: 10,
         currentIteration: 2,
         iterations: multipleIterations,
         githubIssueUrl: "https://github.com/example/data-processor/issues/15",
@@ -349,7 +344,6 @@ export const mockProjects: Project[] = [
         mode: "expected_output",
         expectedOutput: "Should retry with exponential backoff",
         status: "open",
-        maxIterations: 5,
         currentIteration: 0,
         iterations: [],
         createdAt: new Date("2025-11-09T08:00:00"),

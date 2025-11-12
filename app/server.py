@@ -179,7 +179,7 @@ async def repair(run_id: str, req: RepairRequest):
         raise HTTPException(404, "No file in run directory")
 
     filename = files[0]
-    max_attempts = 3
+    max_attempts = 8
 
     # Save original code before any modifications
     source_path = os.path.join(run_dir, filename)

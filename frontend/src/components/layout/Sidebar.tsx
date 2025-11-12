@@ -166,7 +166,7 @@ export function Sidebar({
                                   )}
                                 </div>
                                 <div className="text-[10px] text-muted-foreground mt-0.5">
-                                  {issue.currentIteration}/{issue.maxIterations} iter
+                                  Iteration {issue.currentIteration}
                                 </div>
                               </div>
                               <Badge

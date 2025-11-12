@@ -17,28 +17,49 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 interface CreateProjectProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onCreateProject: (data: { name: string; description?: string; files?: File[] }) => void;
+  onCreateProject: (data: {
+    name: string;
+    description?: string;
+    files?: File[];
+    filePaths?: string[]; // Relative paths for each file to preserve folder structure
+  }) => void;
 }
 
 export function CreateProject({ open, onOpenChange, onCreateProject }: CreateProjectProps) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [files, setFiles] = useState<File[]>([]);
+  const [filePaths, setFilePaths] = useState<string[]>([]);
   const [githubUrl, setGithubUrl] = useState("");
+  const [uploadMode, setUploadMode] = useState<"files" | "folder">("files");
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
-      setFiles(Array.from(e.target.files));
+      const fileArray = Array.from(e.target.files);
+      setFiles(fileArray);
+
+      // Extract relative paths (for folder uploads)
+      const paths = fileArray.map(file => {
+        // webkitRelativePath contains the folder structure
+        if ((file as any).webkitRelativePath) {
+          return (file as any).webkitRelativePath;
+        }
+        // For single file uploads, just use the file name
+        return file.name;
+      });
+      setFilePaths(paths);
     }
   };
 
   const handleSubmit = () => {
-    onCreateProject({ name, description, files });
+    onCreateProject({ name, description, files, filePaths });
     // Reset form
     setName("");
     setDescription("");
     setFiles([]);
+    setFilePaths([]);
     setGithubUrl("");
+    setUploadMode("files");
     onOpenChange(false);
   };
 
@@ -88,31 +109,76 @@ export function CreateProject({ open, onOpenChange, onCreateProject }: CreatePro
             </TabsList>
 
             <TabsContent value="upload" className="mt-4">
-              <div className="border-2 border-dashed rounded-lg p-8 text-center">
-                <Upload className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-                <label htmlFor="file-upload" className="cursor-pointer">
-                  <span className="text-sm font-medium">Click to upload</span>
-                  <span className="text-sm text-muted-foreground"> or drag and drop</span>
-                  <input
-                    id="file-upload"
-                    type="file"
-                    multiple
-                    onChange={handleFileChange}
-                    className="hidden"
-                  />
-                </label>
-                {files.length > 0 && (
-                  <div className="mt-4 text-left">
-                    <div className="text-sm font-medium mb-2">
-                      Selected files ({files.length}):
+              <div className="space-y-4">
+                {/* Upload mode selector */}
+                <div className="flex gap-4">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="upload-mode"
+                      value="files"
+                      checked={uploadMode === "files"}
+                      onChange={() => {
+                        setUploadMode("files");
+                        setFiles([]);
+                        setFilePaths([]);
+                      }}
+                      className="h-4 w-4"
+                    />
+                    <span className="text-sm">Upload Files</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="upload-mode"
+                      value="folder"
+                      checked={uploadMode === "folder"}
+                      onChange={() => {
+                        setUploadMode("folder");
+                        setFiles([]);
+                        setFilePaths([]);
+                      }}
+                      className="h-4 w-4"
+                    />
+                    <span className="text-sm">Upload Folder (Git Repo)</span>
+                  </label>
+                </div>
+
+                {/* Upload area */}
+                <div className="border-2 border-dashed rounded-lg p-8 text-center">
+                  <Upload className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+                  <label htmlFor="file-upload" className="cursor-pointer">
+                    <span className="text-sm font-medium">
+                      {uploadMode === "folder" ? "Click to select folder" : "Click to upload files"}
+                    </span>
+                    <span className="text-sm text-muted-foreground"> or drag and drop</span>
+                    <input
+                      id="file-upload"
+                      type="file"
+                      multiple={uploadMode === "files"}
+                      {...(uploadMode === "folder" ? { webkitdirectory: "", directory: "" } as any : {})}
+                      onChange={handleFileChange}
+                      className="hidden"
+                    />
+                  </label>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    {uploadMode === "folder"
+                      ? "Select a folder to upload entire directory structure"
+                      : "Select one or more files to upload"}
+                  </p>
+                  {files.length > 0 && (
+                    <div className="mt-4 text-left">
+                      <div className="text-sm font-medium mb-2">
+                        Selected files ({files.length}):
+                      </div>
+                      <div className="max-h-32 overflow-y-auto text-xs text-muted-foreground space-y-1">
+                        {filePaths.map((path, idx) => (
+                          <div key={idx} className="font-mono">{path}</div>
+                        ))}
+                      </div>
                     </div>
-                    <div className="max-h-32 overflow-y-auto text-xs text-muted-foreground space-y-1">
-                      {files.map((file, idx) => (
-                        <div key={idx}>{file.name}</div>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             </TabsContent>
 
