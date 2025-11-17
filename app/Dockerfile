@@ -1,36 +1,20 @@
-# Multi-stage build for Python FastAPI backend
-
-# Stage 1: Build stage - Install dependencies
-FROM python:3.11-slim as builder
+FROM python:3.11-slim
 
 WORKDIR /app
 
 # Install system dependencies
 # - docker.io → Docker CLI (needed because we run "docker run …" via subprocess)
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends docker.io && \
-    apt-get clean && \
+    apt-get install -y docker.io && \
     rm -rf /var/lib/apt/lists/*
+
+# Verify docker is installed
+RUN which docker && docker --version
 
 # Install Python dependencies
 RUN pip install --no-cache-dir fastapi uvicorn python-multipart gitpython requests supabase
 
-# Stage 2: Runtime stage
-FROM python:3.11-slim
-
-WORKDIR /app
-
-# Install only runtime dependencies (docker.io)
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends docker.io && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
-
-# Copy Python packages from builder
-COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
-COPY --from=builder /usr/local/bin/uvicorn /usr/local/bin/uvicorn
-
-# Copy application code
+# Copy the app code
 COPY . .
 
 # Expose port

@@ -2,7 +2,7 @@
 
 export type ProjectLanguage = 'python' | 'java' | 'multi' | 'javascript' | 'typescript' | 'other';
 
-export type IssueStatus = 'open' | 'in_progress' | 'solved' | 'failed';
+export type IssueStatus = 'open' | 'in_progress' | 'solved' | 'failed' | 'merged';
 
 export type IterationStatus = 'running' | 'completed' | 'failed';
 
@@ -34,19 +34,25 @@ export interface Issue {
   id: string;
   projectId?: string;
   title: string;
-  description: string;  // User's description of the problem
+  description?: string;  // User's description of the problem
   mode: IssueMode;      // 'basic' for syntax fixing, 'expected_output' for custom behavior
   expectedOutput?: string;  // Natural language description of expected behavior (when mode is 'expected_output')
   status: IssueStatus | 'pending';
   currentIteration: number;
   iterations: Iteration[];
   selectedFiles?: string[];  // File names selected for this issue
+  // Final result after all iterations
+  originalCode?: string;
+  fixedCode?: string;
+  reasoning?: string;
+  runtimeOutput?: string;
+  exitCode?: number;
   githubIssueUrl?: string;  // Link to GitHub issue if connected
   githubIssueNumber?: number;  // GitHub issue number (e.g., 42)
   githubPrUrl?: string;  // Link to GitHub PR if created
   githubPrNumber?: number;  // GitHub PR number
   githubPrMerged?: boolean;  // True if PR was merged
-  createdAt: Date | string;
+  createdAt?: Date | string;
   updatedAt?: Date;
 }
 

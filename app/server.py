@@ -184,7 +184,7 @@ async def repair(run_id: str, req: RepairRequest):
     # Save original code before any modifications
     source_path = os.path.join(run_dir, filename)
     with open(source_path) as f:
-        original_code = f.read()
+        original_code = f.read().strip()  # Normalize whitespace
 
     # Initial run to check if code is already working
     if req.language == "python":
@@ -270,7 +270,7 @@ RETURN ONLY THE FULL FIXED CODE BELOW NOTHING ELSE:
         if ret == 0 and (req.expected_output is None or out.strip() == req.expected_output.strip()):
             # Read the fixed code
             with open(source_path) as f:
-                fixed_code = f.read()
+                fixed_code = f.read().strip()  # Normalize whitespace
 
             return {
                 "status": "success",
@@ -284,7 +284,7 @@ RETURN ONLY THE FULL FIXED CODE BELOW NOTHING ELSE:
     # Max attempts reached, return current state
     # Read the last attempted fix
     with open(source_path) as f:
-        fixed_code = f.read()
+        fixed_code = f.read().strip()  # Normalize whitespace
 
     return {
         "status": "failed",

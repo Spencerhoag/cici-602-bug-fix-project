@@ -1,9 +1,12 @@
-import { useState, useEffect } from "react";
-import { Play, Check, X, GitBranch, GitMerge, GitPullRequest, StopCircle } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { Play, X, GitBranch, GitMerge, GitPullRequest, StopCircle, Edit } from "lucide-react";
+import { toast, Toaster } from "sonner";
 import { Header } from "@/components/layout/Header";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { CreateProject } from "@/components/project/CreateProject";
+import { ManageProject } from "@/components/project/ManageProject";
 import { CreateIssue } from "@/components/issue/CreateIssue";
+import { EditIssue } from "@/components/issue/EditIssue";
 import { DiffView } from "@/components/ai/DiffView";
 import { RuntimeOutput } from "@/components/ai/RuntimeOutput";
 import { Button } from "@/components/ui/button";
@@ -22,7 +25,10 @@ import {
   getIssues,
   createIssue as dbCreateIssue,
   updateIssue,
+  deleteIssue as dbDeleteIssue,
+  deleteProject as dbDeleteProject,
 } from "@/lib/database";
+import { createUnifiedDiff } from "@/lib/diffUtils";
 
 // File metadata type
 interface FileMetadata {
@@ -53,7 +59,12 @@ export default function App() {
   }
 
   // User is authenticated, show main app
-  return <MainApp />;
+  return (
+    <>
+      <MainApp />
+      <Toaster position="bottom-right" richColors />
+    </>
+  );
 }
 
 function MainApp() {
@@ -62,8 +73,10 @@ function MainApp() {
   const [selectedProjectId, setSelectedProjectId] = useState<string>();
   const [selectedIssueId, setSelectedIssueId] = useState<string>();
   const [createProjectOpen, setCreateProjectOpen] = useState(false);
+  const [manageProjectOpen, setManageProjectOpen] = useState(false);
   const [createIssueOpen, setCreateIssueOpen] = useState(false);
   const [createIssueProjectId, setCreateIssueProjectId] = useState<string>();
+  const [editIssueOpen, setEditIssueOpen] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [showOpenPR, setShowOpenPR] = useState(false);
   const [projectFiles, setProjectFiles] = useState<Record<string, Record<string, FileMetadata>>>({});  // projectId -> fileName -> FileMetadata
@@ -131,6 +144,8 @@ function MainApp() {
             repository: undefined,
             issues,
             createdAt: undefined,
+            fileCount: dbFiles.length,
+            files: dbFiles.map(f => f.name),
           };
         })
       );
@@ -141,10 +156,93 @@ function MainApp() {
       }
     } catch (error) {
       console.error("Failed to load projects:", error);
-      alert("Failed to load projects from database");
+      toast.error("Failed to load projects from database");
     } finally {
       setLoading(false);
     }
+  };
+
+  // Granular update functions to avoid full reloads
+  const updateProjectFiles = async (projectId: string) => {
+    const dbFiles = await getProjectFiles(projectId);
+    const fileMap: Record<string, any> = {};
+    dbFiles.forEach((file) => {
+      fileMap[file.name] = {
+        name: file.name,
+        path: file.path,
+        size: file.size,
+        mime_type: file.mime_type,
+      };
+    });
+    setProjectFiles((prev) => ({
+      ...prev,
+      [projectId]: fileMap,
+    }));
+
+    // Update file count in projects
+    setProjects((prev) =>
+      prev.map((p) =>
+        p.id === projectId
+          ? { ...p, fileCount: dbFiles.length, files: dbFiles.map(f => f.name) }
+          : p
+      )
+    );
+  };
+
+  const updateProjectIssues = async (projectId: string) => {
+    const dbIssues = await getIssues(projectId);
+    const issues = dbIssues.map((issue) => ({
+      id: issue.id,
+      title: issue.title,
+      description: issue.description,
+      status: issue.status,
+      mode: issue.mode,
+      expectedOutput: issue.expected_output,
+      currentIteration: issue.iterations_count,
+      selectedFiles: issue.selected_files || [],
+      iterations: [],
+      originalCode: issue.original_code,
+      fixedCode: issue.fixed_code,
+      reasoning: issue.reasoning,
+      runtimeOutput: issue.runtime_output,
+      exitCode: issue.exit_code,
+      createdAt: issue.created_at,
+    }));
+
+    setProjects((prev) =>
+      prev.map((p) =>
+        p.id === projectId ? { ...p, issues } : p
+      )
+    );
+  };
+
+  const updateSingleIssue = (projectId: string, issueId: string, updates: Partial<Issue>) => {
+    setProjects((prev) =>
+      prev.map((p) =>
+        p.id === projectId
+          ? {
+              ...p,
+              issues: p.issues.map((i: Issue) =>
+                i.id === issueId ? { ...i, ...updates } : i
+              ),
+            }
+          : p
+      )
+    );
+  };
+
+  const removeProject = (projectId: string) => {
+    setProjects((prev) => prev.filter((p) => p.id !== projectId));
+  };
+
+  const removeIssue = (projectId: string, issueId: string) => {
+    setProjects((prev) =>
+      prev.map((p) =>
+        p.id === projectId
+          ? { ...p, issues: p.issues.filter((i: Issue) => i.id !== issueId) }
+          : p
+      )
+    );
   };
 
   const selectedProject = projects.find((p) => p.id === selectedProjectId);
@@ -152,13 +250,13 @@ function MainApp() {
     (i: Issue) => i.id === selectedIssueId
   );
 
-  const handleProjectSelect = (projectId: string) => {
+  const handleProjectSelect = useCallback((projectId: string) => {
     setSelectedProjectId(projectId);
     setSelectedIssueId(undefined);
     setMobileSidebarOpen(false);
-  };
+  }, []);
 
-  const handleIssueSelect = (issueId: string) => {
+  const handleIssueSelect = useCallback((issueId: string) => {
     setSelectedIssueId(issueId);
     const project = projects.find((p) =>
       p.issues.some((i: Issue) => i.id === issueId)
@@ -168,12 +266,12 @@ function MainApp() {
     }
     setMobileSidebarOpen(false);
     setShowOpenPR(false);
-  };
+  }, [projects]);
 
-  const handleCreateIssue = (projectId: string) => {
+  const handleCreateIssue = useCallback((projectId: string) => {
     setCreateIssueProjectId(projectId);
     setCreateIssueOpen(true);
-  };
+  }, []);
 
   const handleStartAI = async () => {
     if (!selectedIssueId || !selectedProjectId) return;
@@ -181,14 +279,14 @@ function MainApp() {
     // Get the files selected for this issue
     const issueFileNames = selectedIssue?.selectedFiles || [];
     if (issueFileNames.length === 0) {
-      alert("No files selected for this issue");
+      toast.error("No files selected for this issue");
       return;
     }
 
     const fileMetadata = projectFiles[selectedProjectId]?.[issueFileNames[0]];
 
     if (!fileMetadata) {
-      alert("File not found in project");
+      toast.error("File not found in project");
       return;
     }
 
@@ -206,7 +304,7 @@ function MainApp() {
       });
     } catch (error) {
       console.error("Failed to download file:", error);
-      alert("Failed to download file from storage");
+      toast.error("Failed to download file from storage");
       setIsProcessing(false);
       return;
     }
@@ -256,11 +354,21 @@ function MainApp() {
         iterations_count: repairResponse.iterations || 0,
       });
 
-      // Reload projects to get updated issue
-      await loadProjects();
+      // Update local state
+      updateSingleIssue(selectedProjectId, selectedIssueId, {
+        status: finalStatus,
+        originalCode: repairResponse.original_code,
+        fixedCode: repairResponse.fixed_code,
+        reasoning: repairResponse.message || `Attempted to fix code. ${repairResponse.status === "success" ? "Success!" : "Failed after " + repairResponse.iterations + " attempts."}`,
+        runtimeOutput: repairResponse.output || repairResponse.last_output || repairResponse.last_error || "",
+        exitCode: repairResponse.status === "success" ? 0 : (repairResponse.last_exit_code || 1),
+        currentIteration: repairResponse.iterations || 0,
+      });
     } catch (error) {
       console.error("Error:", error);
-      alert(`Error: ${error instanceof Error ? error.message : "Unknown error"}`);
+      toast.error("Error processing issue", {
+        description: error instanceof Error ? error.message : "Unknown error"
+      });
 
       try {
         // Update issue status to failed
@@ -290,17 +398,112 @@ function MainApp() {
     setIsProcessing(false);
   };
 
-  const handleAcceptChanges = () => {
-    console.log("Accepting changes...");
-    // If issue is connected to GitHub, show the Open PR button
-    if (selectedIssue?.githubIssueUrl) {
-      setShowOpenPR(true);
+  const handleAcceptChanges = async () => {
+    if (!selectedIssueId || !selectedProjectId || !selectedIssue?.fixedCode) return;
+
+    try {
+      console.log("Accepting changes...");
+
+      // Get the file to update
+      const fileName = selectedIssue.selectedFiles?.[0];
+      if (!fileName) {
+        toast.error("No file selected for this issue");
+        return;
+      }
+
+      const fileMetadata = projectFiles[selectedProjectId]?.[fileName];
+      if (!fileMetadata) {
+        toast.error("File not found in project");
+        return;
+      }
+
+      // Check for conflicts with other merged issues
+      const otherMergedIssues = selectedProject?.issues.filter(
+        (issue: Issue) => issue.id !== selectedIssueId && issue.status === "merged" &&
+        issue.selectedFiles?.some(f => selectedIssue.selectedFiles?.includes(f))
+      ) || [];
+
+      if (otherMergedIssues.length > 0) {
+        toast.error("Cannot merge: Another issue has already modified the same file(s)", {
+          description: `Conflicting with: ${otherMergedIssues.map((i: Issue) => i.title).join(", ")}. This requires Git integration.`
+        });
+        return;
+      }
+
+      // Create a new File object with the fixed code
+      const fixedFile = new File([selectedIssue.fixedCode], fileName, {
+        type: fileMetadata.mime_type || "text/plain",
+      });
+
+      // Upload the fixed code to storage (overwrite the original)
+      await uploadProjectFile(selectedProjectId, fixedFile, fileName);
+
+      // Mark issue as merged
+      await updateIssue(selectedIssueId, {
+        status: "merged",
+      });
+
+      // Update local state
+      updateSingleIssue(selectedProjectId, selectedIssueId, { status: "merged" });
+      await updateProjectFiles(selectedProjectId);
+
+      toast.success("Changes merged successfully", {
+        description: "The code has been updated in your project"
+      });
+
+      // If issue is connected to GitHub, show the Open PR button
+      if (selectedIssue?.githubIssueUrl) {
+        setShowOpenPR(true);
+      }
+    } catch (error) {
+      console.error("Failed to accept changes:", error);
+      toast.error("Failed to save fixed code", {
+        description: error instanceof Error ? error.message : "Unknown error"
+      });
     }
   };
 
-  const handleRejectChanges = () => {
-    console.log("Rejecting changes...");
-    setShowOpenPR(false);
+  const handleRejectChanges = async () => {
+    if (!selectedIssueId) return;
+
+    try {
+      console.log("Rejecting changes...");
+
+      // Reset issue to pending status and clear results
+      await updateIssue(selectedIssueId, {
+        status: "pending",
+        original_code: undefined,
+        fixed_code: undefined,
+        reasoning: undefined,
+        runtime_output: undefined,
+        exit_code: undefined,
+        iterations_count: 0,
+      });
+
+      // Update local state
+      if (selectedProjectId) {
+        updateSingleIssue(selectedProjectId, selectedIssueId, {
+          status: "pending",
+          originalCode: undefined,
+          fixedCode: undefined,
+          reasoning: undefined,
+          runtimeOutput: undefined,
+          exitCode: undefined,
+          currentIteration: 0,
+        });
+      }
+
+      setShowOpenPR(false);
+
+      toast.success("Issue reset to pending", {
+        description: "You can try fixing it again"
+      });
+    } catch (error) {
+      console.error("Failed to reject changes:", error);
+      toast.error("Failed to reset issue", {
+        description: error instanceof Error ? error.message : "Unknown error"
+      });
+    }
   };
 
   const handleOpenPR = () => {
@@ -352,6 +555,10 @@ function MainApp() {
             onIssueSelect={handleIssueSelect}
             onCreateProject={() => setCreateProjectOpen(true)}
             onCreateIssue={handleCreateIssue}
+            onManageProject={(projectId) => {
+              setSelectedProjectId(projectId);
+              setManageProjectOpen(true);
+            }}
           />
         </div>
 
@@ -382,12 +589,16 @@ function MainApp() {
                       </Badge>
                       <Badge
                         variant={
+                          selectedIssue.status === "merged" ? "default" :
                           selectedIssue.status === "solved" ? "success" :
                           selectedIssue.status === "in_progress" ? "warning" :
                           selectedIssue.status === "failed" ? "destructive" : "outline"
                         }
-                        className="text-xs px-2 py-0.5"
+                        className={`text-xs px-2 py-0.5 ${
+                          selectedIssue.status === "merged" ? "bg-purple-600 hover:bg-purple-700" : ""
+                        }`}
                       >
+                        {selectedIssue.status === "merged" && <GitMerge className="h-2.5 w-2.5 mr-1 inline" />}
                         {selectedIssue.status.replace("_", " ")}
                       </Badge>
 
@@ -407,29 +618,40 @@ function MainApp() {
                     </div>
                   </div>
 
-                  {/* Start/Stop AI Button */}
-                  {isProcessing || selectedIssue.status === "in_progress" ? (
+                  {/* Action Buttons */}
+                  <div className="flex gap-2 w-full md:w-auto">
                     <Button
                       size="sm"
-                      variant="destructive"
-                      onClick={handleStopAI}
-                      className="w-full md:w-auto"
-                      disabled={isProcessing}
+                      variant="outline"
+                      onClick={() => setEditIssueOpen(true)}
+                      className="flex-1 md:flex-none"
                     >
-                      <StopCircle className="h-4 w-4 mr-2" />
-                      {isProcessing ? "Processing..." : "Stop AI"}
+                      <Edit className="h-4 w-4 mr-2" />
+                      Edit
                     </Button>
-                  ) : (
-                    <Button
-                      size="sm"
-                      onClick={handleStartAI}
-                      disabled={selectedIssue.status === "solved" || isProcessing}
-                      className="w-full md:w-auto"
-                    >
-                      <Play className="h-4 w-4 mr-2" />
-                      Start AI
-                    </Button>
-                  )}
+                    {isProcessing || selectedIssue.status === "in_progress" ? (
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        onClick={handleStopAI}
+                        className="flex-1 md:flex-none"
+                        disabled={isProcessing}
+                      >
+                        <StopCircle className="h-4 w-4 mr-2" />
+                        {isProcessing ? "Processing..." : "Stop AI"}
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        onClick={handleStartAI}
+                        disabled={selectedIssue.status === "solved" || isProcessing}
+                        className="flex-1 md:flex-none"
+                      >
+                        <Play className="h-4 w-4 mr-2" />
+                        Start AI
+                      </Button>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -458,7 +680,7 @@ function MainApp() {
                       </CardContent>
                     </Card>
                   </div>
-                ) : (selectedIssue.status === "solved" || selectedIssue.status === "failed") && selectedIssue.fixedCode ? (
+                ) : (selectedIssue.status === "solved" || selectedIssue.status === "failed" || selectedIssue.status === "merged") && selectedIssue.fixedCode ? (
                   <div className="space-y-3 max-w-5xl mx-auto">
                     <Card className="border-primary/50">
                       <CardHeader className="p-3">
@@ -472,9 +694,16 @@ function MainApp() {
                             </p>
                           </div>
                           <Badge
-                            variant={selectedIssue.status === "solved" ? "success" : "destructive"}
-                            className="text-[10px] px-2 py-0.5"
+                            variant={
+                              selectedIssue.status === "merged" ? "default" :
+                              selectedIssue.status === "solved" ? "success" :
+                              "destructive"
+                            }
+                            className={`text-[10px] px-2 py-0.5 ${
+                              selectedIssue.status === "merged" ? "bg-purple-600 hover:bg-purple-700" : ""
+                            }`}
                           >
+                            {selectedIssue.status === "merged" && <GitMerge className="h-2.5 w-2.5 mr-1 inline" />}
                             {selectedIssue.status}
                           </Badge>
                         </div>
@@ -498,26 +727,11 @@ function MainApp() {
                             <DiffView changes={[{
                               id: 'final-change',
                               filePath: selectedIssue.selectedFiles?.[0] || 'file',
-                              diff: (() => {
-                                const originalLines = selectedIssue.originalCode.split("\n");
-                                const fixedLines = selectedIssue.fixedCode.split("\n");
-                                let diff = `--- a/${selectedIssue.selectedFiles?.[0] || 'file'}\n+++ b/${selectedIssue.selectedFiles?.[0] || 'file'}\n@@ -1,${originalLines.length} +1,${fixedLines.length} @@\n`;
-
-                                const maxLines = Math.max(originalLines.length, fixedLines.length);
-                                for (let i = 0; i < maxLines; i++) {
-                                  const origLine = originalLines[i];
-                                  const fixedLine = fixedLines[i];
-
-                                  if (origLine !== fixedLine) {
-                                    if (origLine !== undefined) diff += `-${origLine}\n`;
-                                    if (fixedLine !== undefined) diff += `+${fixedLine}\n`;
-                                  } else if (origLine !== undefined) {
-                                    diff += ` ${origLine}\n`;
-                                  }
-                                }
-
-                                return diff;
-                              })(),
+                              diff: createUnifiedDiff(
+                                selectedIssue.originalCode,
+                                selectedIssue.fixedCode,
+                                selectedIssue.selectedFiles?.[0] || 'file'
+                              ),
                             }]} />
                           </div>
                         )}
@@ -593,9 +807,21 @@ function MainApp() {
                         onClick={handleAcceptChanges}
                         className="sm:w-auto"
                       >
-                        <Check className="h-4 w-4 mr-2" />
-                        Accept
+                        <GitMerge className="h-4 w-4 mr-2" />
+                        Merge Changes
                       </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Merged status message */}
+              {selectedIssue.status === "merged" && (
+                <div className="border-t border-border/50 bg-card/50 backdrop-blur-sm p-3 md:p-4">
+                  <div className="max-w-5xl mx-auto">
+                    <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                      <GitMerge className="h-4 w-4 text-purple-600" />
+                      <span>Changes have been merged into the project</span>
                     </div>
                   </div>
                 </div>
@@ -674,14 +900,28 @@ function MainApp() {
               }));
             }
 
-            // Reload projects from database
-            await loadProjects();
+            // Add new project to state
+            setProjects((prev) => [
+              ...prev,
+              {
+                id: project.id,
+                name: project.name,
+                description: undefined,
+                repository: undefined,
+                issues: [],
+                createdAt: undefined,
+                fileCount: data.files?.length || 0,
+                files: data.files?.map((f: File) => f.name) || [],
+              },
+            ]);
 
             // Select the new project
             setSelectedProjectId(project.id);
           } catch (error) {
             console.error("Failed to create project:", error);
-            alert("Failed to create project: " + (error instanceof Error ? error.message : "Unknown error"));
+            toast.error("Failed to create project", {
+              description: error instanceof Error ? error.message : "Unknown error"
+            });
           }
         }}
       />
@@ -700,7 +940,7 @@ function MainApp() {
             if (!createIssueProjectId) return;
 
             // Create issue in database
-            const issue = await dbCreateIssue({
+            const dbIssue = await dbCreateIssue({
               project_id: createIssueProjectId,
               title: data.title,
               description: data.description,
@@ -709,14 +949,164 @@ function MainApp() {
               selected_files: data.selectedFiles,
             });
 
-            // Reload projects to get the new issue
-            await loadProjects();
+            // Add issue to local state
+            const newIssue: Issue = {
+              id: dbIssue.id,
+              title: dbIssue.title,
+              description: dbIssue.description || undefined,
+              status: dbIssue.status,
+              mode: dbIssue.mode,
+              expectedOutput: dbIssue.expected_output,
+              currentIteration: 0,
+              selectedFiles: dbIssue.selected_files || [],
+              iterations: [],
+              createdAt: dbIssue.created_at,
+            };
+
+            setProjects((prev) =>
+              prev.map((p) =>
+                p.id === createIssueProjectId
+                  ? { ...p, issues: [newIssue, ...p.issues] }
+                  : p
+              )
+            );
 
             // Select the new issue
-            setSelectedIssueId(issue.id);
+            setSelectedIssueId(dbIssue.id);
           } catch (error) {
             console.error("Failed to create issue:", error);
-            alert("Failed to create issue: " + (error instanceof Error ? error.message : "Unknown error"));
+            toast.error("Failed to create issue", {
+              description: error instanceof Error ? error.message : "Unknown error"
+            });
+          }
+        }}
+      />
+
+      <EditIssue
+        open={editIssueOpen}
+        onOpenChange={setEditIssueOpen}
+        projectFiles={
+          selectedProjectId && projectFiles[selectedProjectId]
+            ? Object.keys(projectFiles[selectedProjectId])
+            : []
+        }
+        initialData={
+          selectedIssue
+            ? {
+                title: selectedIssue.title,
+                description: selectedIssue.description || "",
+                mode: selectedIssue.mode,
+                expectedOutput: selectedIssue.expectedOutput || "",
+                selectedFiles: selectedIssue.selectedFiles || [],
+              }
+            : undefined
+        }
+        onEditIssue={async (data: any) => {
+          try {
+            console.log("Edit issue:", data, "for issue:", selectedIssueId);
+            if (!selectedIssueId) return;
+
+            // Update issue in database
+            await updateIssue(selectedIssueId, {
+              title: data.title,
+              description: data.description,
+              mode: data.mode,
+              expected_output: data.expectedOutput,
+              selected_files: data.selectedFiles,
+            });
+
+            // Update local state
+            if (selectedProjectId) {
+              updateSingleIssue(selectedProjectId, selectedIssueId, {
+                title: data.title,
+                description: data.description,
+                mode: data.mode,
+                expectedOutput: data.expectedOutput,
+                selectedFiles: data.selectedFiles,
+              });
+            }
+
+            toast.success("Issue updated successfully");
+          } catch (error) {
+            console.error("Failed to edit issue:", error);
+            toast.error("Failed to edit issue", {
+              description: error instanceof Error ? error.message : "Unknown error"
+            });
+          }
+        }}
+      />
+
+      <ManageProject
+        open={manageProjectOpen}
+        onOpenChange={setManageProjectOpen}
+        projectName={selectedProject?.name || ""}
+        projectId={selectedProjectId || ""}
+        issues={selectedProject?.issues || []}
+        files={selectedProjectId && projectFiles[selectedProjectId] ? projectFiles[selectedProjectId] : {}}
+        onUploadFiles={async (files: File[], filePaths: string[]) => {
+          if (!selectedProjectId) return;
+
+          try {
+            for (let i = 0; i < files.length; i++) {
+              await uploadProjectFile(selectedProjectId, files[i], filePaths[i]);
+            }
+            await updateProjectFiles(selectedProjectId);
+            toast.success(`${files.length} file(s) uploaded successfully`);
+          } catch (error) {
+            console.error("Failed to upload files:", error);
+            throw error;
+          }
+        }}
+        onDeleteIssue={async (issueId: string) => {
+          if (!selectedProjectId) return;
+
+          // Optimistic update
+          removeIssue(selectedProjectId, issueId);
+
+          // Clear selection if deleted issue was selected
+          if (selectedIssueId === issueId) {
+            setSelectedIssueId(undefined);
+          }
+
+          try {
+            await dbDeleteIssue(issueId);
+            toast.success("Issue deleted successfully");
+          } catch (error) {
+            console.error("Failed to delete issue:", error);
+            // Revert by reloading issues
+            await updateProjectIssues(selectedProjectId);
+            throw error;
+          }
+        }}
+        onDeleteProject={async (projectId: string) => {
+          // Optimistic update
+          removeProject(projectId);
+
+          // Clear selection if deleted project was selected
+          if (selectedProjectId === projectId) {
+            setSelectedProjectId(undefined);
+            setSelectedIssueId(undefined);
+          }
+
+          // Close the manage project dialog
+          setManageProjectOpen(false);
+
+          try {
+            await dbDeleteProject(projectId);
+          } catch (error) {
+            console.error("Failed to delete project:", error);
+            // Revert by reloading all projects
+            await loadProjects();
+            throw error;
+          }
+        }}
+        onFileSelect={async (filePath: string) => {
+          try {
+            const content = await getProjectFileContent(filePath);
+            return content;
+          } catch (error) {
+            console.error("Failed to load file:", error);
+            throw error;
           }
         }}
       />

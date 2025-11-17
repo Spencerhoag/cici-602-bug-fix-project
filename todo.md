@@ -15,22 +15,6 @@
 - **Status**: To Do
 - **Notes**: Need to investigate which specific fix types are broken
 
-### 3. User Data Isolation Issue ✅ FIXED
-- **Issue**: New users are seeing existing projects from other users when they create an account
-- **Expected**: Each user should only see their own projects
-- **Priority**: Critical (Security/Privacy Issue)
-- **Status**: ✅ **COMPLETED**
-- **Fix Applied**: Added user_id filtering to all database queries:
-  - `getProjects()` - now filters by user_id
-  - `getProject()` - now verifies user ownership
-  - `deleteProject()` - now verifies user ownership
-  - `getIssues()` - now filters by user_id
-  - `getIssue()` - now verifies user ownership
-  - `updateIssue()` - now verifies user ownership
-  - `deleteIssue()` - now verifies user ownership
-  - `getProjectFiles()` - now verifies project ownership
-  - `deleteProjectFile()` - now verifies project ownership
-
 - **Remaining Task**: Clean up existing dummy/test data in Supabase database
   - Go to Supabase Dashboard → SQL Editor
   - Run this query to see projects without valid users:
@@ -48,19 +32,6 @@
     -- Delete orphaned projects
     DELETE FROM projects WHERE user_id NOT IN (SELECT id FROM auth.users);
     ```
-
-### 4. Docker Build Never Ends ✅ FIXED
-- **Issue**: Docker build process never completes because it starts servers instead of just building
-- **Expected**: Docker build should complete successfully without starting servers
-- **Priority**: High
-- **Status**: ✅ **COMPLETED**
-- **Fix Applied**:
-  - Optimized backend Dockerfile with multi-stage build (like frontend)
-  - Added clear Docker commands reference to README.md
-  - Clarified that `docker-compose up` starts servers (expected behavior)
-  - Use `docker-compose build` to just build without running
-  - Use `docker-compose down` to stop running services
-  - .dockerignore files already present for optimized builds
 
 ## Feature Requests
 

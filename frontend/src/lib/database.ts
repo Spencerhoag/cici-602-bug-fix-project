@@ -156,6 +156,32 @@ export async function deleteProject(id: string) {
   const user = (await supabase.auth.getUser()).data.user;
   if (!user) throw new Error('User not authenticated');
 
+  // Get project to verify ownership
+  await getProject(id);
+
+  // Delete all files from storage
+  const files = await getProjectFiles(id);
+  if (files.length > 0) {
+    const filePaths = files.map(f => f.path);
+    await supabase.storage
+      .from('project-files')
+      .remove(filePaths);
+  }
+
+  // Delete all issues (and their metadata will cascade)
+  await supabase
+    .from('issues')
+    .delete()
+    .eq('project_id', id)
+    .eq('user_id', user.id);
+
+  // Delete all file metadata
+  await supabase
+    .from('project_files')
+    .delete()
+    .eq('project_id', id);
+
+  // Delete the project itself
   const { error } = await supabase
     .from('projects')
     .delete()
@@ -208,30 +234,72 @@ export async function uploadProjectFile(
     fileName = file.name;
   }
 
+  // Check if file already exists in storage and delete it first
+  // This avoids RLS issues with upsert
+  const { data: existingFiles } = await supabase.storage
+    .from('project-files')
+    .list(project.storage_path);
+
+  const fileExists = existingFiles?.some(f => {
+    const fullPath = `${project.storage_path}/${f.name}`;
+    return fullPath === filePath || f.name === fileName;
+  });
+
+  if (fileExists) {
+    // Delete the old file first
+    await supabase.storage
+      .from('project-files')
+      .remove([filePath]);
+  }
+
   // Upload file to storage using project's storage_path
   const { error: uploadError } = await supabase.storage
     .from('project-files')
-    .upload(filePath, file, {
-      upsert: true,
-    });
+    .upload(filePath, file);
 
   if (uploadError) throw uploadError;
 
-  // Create file metadata record
-  const { data, error } = await supabase
+  // Check if file metadata record already exists
+  const { data: existingFile } = await supabase
     .from('project_files')
-    .insert({
-      project_id: projectId,
-      name: fileName,
-      path: filePath,
-      size: file.size,
-      mime_type: file.type,
-    })
-    .select()
-    .single();
+    .select('*')
+    .eq('project_id', projectId)
+    .eq('name', fileName)
+    .maybeSingle();
 
-  if (error) throw error;
-  return data as DbProjectFile;
+  if (existingFile) {
+    // Update existing record
+    const { data, error } = await supabase
+      .from('project_files')
+      .update({
+        path: filePath,
+        size: file.size,
+        mime_type: file.type,
+      })
+      .eq('project_id', projectId)
+      .eq('name', fileName)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data as DbProjectFile;
+  } else {
+    // Create new file metadata record
+    const { data, error } = await supabase
+      .from('project_files')
+      .insert({
+        project_id: projectId,
+        name: fileName,
+        path: filePath,
+        size: file.size,
+        mime_type: file.type,
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data as DbProjectFile;
+  }
 }
 
 export async function getProjectFiles(projectId: string) {
@@ -298,7 +366,7 @@ export interface DbIssue {
   user_id: string;
   title: string;
   description?: string;
-  status: 'pending' | 'in_progress' | 'solved' | 'failed';
+  status: 'pending' | 'in_progress' | 'solved' | 'failed' | 'merged';
   mode: 'basic' | 'expected_output';
   expected_output?: string;
   selected_files?: string[];

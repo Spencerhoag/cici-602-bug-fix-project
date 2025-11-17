@@ -1,7 +1,12 @@
 "use client";
 
-import { useState } from "react";
-import { Plus, ChevronRight, ChevronDown, FolderPlus, Github, GitPullRequest, GitMerge } from "lucide-react";
+import { useState, memo } from "react";
+import { Plus, ChevronRight, ChevronDown, FolderPlus, Github, GitPullRequest, GitMerge, Settings } from "lucide-react";
+import {
+  SiPython, SiJavascript, SiTypescript, SiReact, SiOpenjdk,
+  SiCplusplus, SiC, SiGo, SiRust, SiRuby, SiPhp, SiSwift,
+  SiKotlin, SiSharp, SiHtml5, SiCss3, SiVuedotjs, SiMysql
+} from "react-icons/si";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
@@ -16,9 +21,52 @@ interface SidebarProps {
   onIssueSelect?: (issueId: string) => void;
   onCreateProject?: () => void;
   onCreateIssue?: (projectId: string) => void;
+  onManageProject?: (projectId: string) => void;
 }
 
-export function Sidebar({
+const getTopLanguages = (files: string[]): Array<{ icon: React.ComponentType<{ className?: string }>; name: string; color: string }> => {
+  const langCounts: Record<string, number> = {};
+  const langMap: Record<string, { icon: React.ComponentType<{ className?: string }>; name: string; color: string }> = {
+    '.py': { icon: SiPython, name: 'Python', color: 'text-[#3776AB]' },
+    '.js': { icon: SiJavascript, name: 'JavaScript', color: 'text-[#F7DF1E]' },
+    '.ts': { icon: SiTypescript, name: 'TypeScript', color: 'text-[#3178C6]' },
+    '.tsx': { icon: SiReact, name: 'React', color: 'text-[#61DAFB]' },
+    '.jsx': { icon: SiReact, name: 'React', color: 'text-[#61DAFB]' },
+    '.java': { icon: SiOpenjdk, name: 'Java', color: 'text-[#007396]' },
+    '.cpp': { icon: SiCplusplus, name: 'C++', color: 'text-[#00599C]' },
+    '.c': { icon: SiC, name: 'C', color: 'text-[#A8B9CC]' },
+    '.go': { icon: SiGo, name: 'Go', color: 'text-[#00ADD8]' },
+    '.rs': { icon: SiRust, name: 'Rust', color: 'text-[#CE422B]' },
+    '.rb': { icon: SiRuby, name: 'Ruby', color: 'text-[#CC342D]' },
+    '.php': { icon: SiPhp, name: 'PHP', color: 'text-[#777BB4]' },
+    '.swift': { icon: SiSwift, name: 'Swift', color: 'text-[#FA7343]' },
+    '.kt': { icon: SiKotlin, name: 'Kotlin', color: 'text-[#7F52FF]' },
+    '.cs': { icon: SiSharp, name: 'C#', color: 'text-[#239120]' },
+    '.html': { icon: SiHtml5, name: 'HTML', color: 'text-[#E34F26]' },
+    '.css': { icon: SiCss3, name: 'CSS', color: 'text-[#1572B6]' },
+    '.vue': { icon: SiVuedotjs, name: 'Vue', color: 'text-[#4FC08D]' },
+    '.sql': { icon: SiMysql, name: 'SQL', color: 'text-[#4479A1]' },
+  };
+
+  files.forEach(file => {
+    const ext = file.substring(file.lastIndexOf('.'));
+    const lang = langMap[ext];
+    if (lang) {
+      const key = lang.name;
+      langCounts[key] = (langCounts[key] || 0) + 1;
+    }
+  });
+
+  return Object.entries(langCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([langName]) => {
+      const langInfo = Object.values(langMap).find(l => l.name === langName);
+      return langInfo || { icon: SiJavascript, name: langName, color: 'text-gray-400' };
+    });
+};
+
+export const Sidebar = memo(function Sidebar({
   projects,
   selectedProjectId,
   selectedIssueId,
@@ -26,6 +74,7 @@ export function Sidebar({
   onIssueSelect,
   onCreateProject,
   onCreateIssue,
+  onManageProject,
 }: SidebarProps) {
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(
     new Set(projects.map((p) => p.id))
@@ -52,6 +101,8 @@ export function Sidebar({
         return "success";
       case "failed":
         return "destructive";
+      case "merged":
+        return "default";
       default:
         return "secondary";
     }
@@ -108,21 +159,50 @@ export function Sidebar({
                         <div className="font-medium text-xs truncate">
                           {project.name}
                         </div>
-                        <div className="text-[10px] text-muted-foreground">
-                          {project.issues.length} issue{project.issues.length !== 1 ? "s" : ""}
+                        <div className="text-[10px] text-muted-foreground flex items-center gap-1.5 flex-wrap">
+                          <span>{project.issues.length} issue{project.issues.length !== 1 ? "s" : ""}</span>
+                          <span>•</span>
+                          <span>{(project as any).fileCount || 0} file{((project as any).fileCount || 0) !== 1 ? "s" : ""}</span>
+                          {(project as any).files && (project as any).files.length > 0 && (
+                            <div className="flex items-center gap-1">
+                              {getTopLanguages((project as any).files).map((lang, i) => {
+                                const Icon = lang.icon;
+                                return (
+                                  <span key={i} title={lang.name}>
+                                    <Icon className={`h-3 w-3 ${lang.color}`} />
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          )}
                         </div>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-5 w-5 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onCreateIssue?.(project.id);
-                        }}
-                      >
-                        <Plus className="h-2.5 w-2.5" />
-                      </Button>
+                      <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-5 w-5 p-0"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onManageProject?.(project.id);
+                          }}
+                          title="Manage project"
+                        >
+                          <Settings className="h-2.5 w-2.5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-5 w-5 p-0"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onCreateIssue?.(project.id);
+                          }}
+                          title="Create issue"
+                        >
+                          <Plus className="h-2.5 w-2.5" />
+                        </Button>
+                      </div>
                     </div>
 
                     {/* Issues */}
@@ -171,7 +251,9 @@ export function Sidebar({
                               </div>
                               <Badge
                                 variant={getStatusColor(issue.status)}
-                                className="text-[9px] px-1.5 py-0 h-4 flex-shrink-0"
+                                className={`text-[9px] px-1.5 py-0 h-4 flex-shrink-0 ${
+                                  issue.status === "merged" ? "bg-purple-600 hover:bg-purple-700 text-white" : ""
+                                }`}
                               >
                                 {issue.status.replace("_", " ")}
                               </Badge>
@@ -189,4 +271,4 @@ export function Sidebar({
       </ScrollArea>
     </div>
   );
-}
+});
