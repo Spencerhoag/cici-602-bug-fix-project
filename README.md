@@ -8,7 +8,7 @@ The easiest way to run CICI is using Docker Compose:
 
 ```bash
 # 1. Set up environment variables (in project root)
-cp frontend/.env.example .env
+cp .env.example .env
 # Edit .env with your Supabase credentials
 
 # 2. Set up Supabase database
@@ -22,6 +22,34 @@ docker-compose up --build
 - Frontend: http://localhost:3000
 - Backend API: http://localhost:8000
 - Ollama (LLM): http://localhost:11434
+
+### Docker Commands Reference
+
+```bash
+# Build images only (completes and exits)
+docker-compose build
+
+# Build and run in foreground (press Ctrl+C to stop)
+docker-compose up --build
+
+# Build and run in background (detached mode)
+docker-compose up -d --build
+
+# Stop running containers
+docker-compose down
+
+# Stop and remove volumes (clean slate)
+docker-compose down -v
+
+# View logs
+docker-compose logs -f
+
+# Rebuild specific service
+docker-compose build frontend
+docker-compose build app
+```
+
+**Note:** `docker-compose up` starts the servers and keeps them running. This is expected behavior. Use `docker-compose down` to stop all services.
 
 For detailed setup instructions, see [DOCKER_SETUP.md](./DOCKER_SETUP.md)
 

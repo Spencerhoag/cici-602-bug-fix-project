@@ -1,6 +1,92 @@
 import { supabase } from './supabase';
 
 // ============================================
+// USER MANAGEMENT
+// ============================================
+
+/**
+ * Ensures a user record exists in the users table.
+ * Creates one if it doesn't exist.
+ */
+async function ensureUserRecord() {
+  const user = (await supabase.auth.getUser()).data.user;
+  if (!user) throw new Error('User not authenticated');
+
+  console.log('[ensureUserRecord] Checking for user:', { id: user.id, email: user.email });
+
+  // Check if user record exists by ID
+  const { data: existingUser, error: selectError } = await supabase
+    .from('users')
+    .select('id, username')
+    .eq('id', user.id)
+    .maybeSingle();
+
+  console.log('[ensureUserRecord] Query by ID result:', { existingUser, selectError });
+
+  // If there's a real error (not just "not found"), throw it
+  if (selectError) {
+    console.error('[ensureUserRecord] Error querying user by ID:', selectError);
+    throw selectError;
+  }
+
+  // If user doesn't exist, create or update it
+  if (!existingUser) {
+    console.log('[ensureUserRecord] User record not found, attempting to create...');
+
+    // Check if a record exists with this username (email)
+    if (user.email) {
+      const { data: userByEmail } = await supabase
+        .from('users')
+        .select('id, username')
+        .eq('username', user.email)
+        .maybeSingle();
+
+      console.log('[ensureUserRecord] Query by username result:', userByEmail);
+
+      // If username exists with different ID, update the ID
+      if (userByEmail && userByEmail.id !== user.id) {
+        console.log('[ensureUserRecord] Username exists with different ID, updating...');
+        const { error: updateError } = await supabase
+          .from('users')
+          .update({ id: user.id })
+          .eq('username', user.email);
+
+        if (updateError) {
+          console.error('[ensureUserRecord] Failed to update user ID:', updateError);
+          throw updateError;
+        }
+        console.log('[ensureUserRecord] User ID updated successfully');
+        return;
+      }
+    }
+
+    // Try to insert new user record
+    const { error: insertError } = await supabase
+      .from('users')
+      .insert({
+        id: user.id,
+        username: user.email || user.id,
+      });
+
+    if (insertError) {
+      console.error('[ensureUserRecord] Error creating user record:', insertError);
+      console.error('[ensureUserRecord] Error details:', JSON.stringify(insertError, null, 2));
+
+      // Ignore duplicate key errors (race condition - another request created it)
+      if (insertError.code !== '23505') {
+        throw insertError;
+      } else {
+        console.log('[ensureUserRecord] Duplicate key error - user was created by another request');
+      }
+    } else {
+      console.log('[ensureUserRecord] User record created successfully');
+    }
+  } else {
+    console.log('[ensureUserRecord] User record already exists');
+  }
+}
+
+// ============================================
 // PROJECTS
 // ============================================
 
@@ -14,6 +100,9 @@ export interface DbProject {
 export async function createProject(data: {
   name: string;
 }) {
+  // Ensure user record exists before creating project
+  await ensureUserRecord();
+
   const user = (await supabase.auth.getUser()).data.user;
   if (!user) throw new Error('User not authenticated');
 
@@ -35,9 +124,13 @@ export async function createProject(data: {
 }
 
 export async function getProjects() {
+  const user = (await supabase.auth.getUser()).data.user;
+  if (!user) throw new Error('User not authenticated');
+
   const { data, error } = await supabase
     .from('projects')
     .select('*')
+    .eq('user_id', user.id)
     .order('name', { ascending: true });
 
   if (error) throw error;
@@ -45,10 +138,14 @@ export async function getProjects() {
 }
 
 export async function getProject(id: string) {
+  const user = (await supabase.auth.getUser()).data.user;
+  if (!user) throw new Error('User not authenticated');
+
   const { data, error } = await supabase
     .from('projects')
     .select('*')
     .eq('id', id)
+    .eq('user_id', user.id)
     .single();
 
   if (error) throw error;
@@ -56,7 +153,14 @@ export async function getProject(id: string) {
 }
 
 export async function deleteProject(id: string) {
-  const { error } = await supabase.from('projects').delete().eq('id', id);
+  const user = (await supabase.auth.getUser()).data.user;
+  if (!user) throw new Error('User not authenticated');
+
+  const { error } = await supabase
+    .from('projects')
+    .delete()
+    .eq('id', id)
+    .eq('user_id', user.id);
 
   if (error) throw error;
 }
@@ -131,6 +235,9 @@ export async function uploadProjectFile(
 }
 
 export async function getProjectFiles(projectId: string) {
+  // Verify user owns the project first
+  await getProject(projectId);
+
   const { data, error } = await supabase
     .from('project_files')
     .select('*')
@@ -156,6 +263,18 @@ export async function getProjectFileContent(path: string): Promise<string> {
 }
 
 export async function deleteProjectFile(id: string, path: string) {
+  // First get the file to verify ownership through project
+  const { data: fileData, error: fileError } = await supabase
+    .from('project_files')
+    .select('project_id')
+    .eq('id', id)
+    .single();
+
+  if (fileError) throw fileError;
+
+  // Verify user owns the project
+  await getProject(fileData.project_id);
+
   // Delete from storage
   const { error: storageError } = await supabase.storage
     .from('project-files')
@@ -202,10 +321,16 @@ export async function createIssue(data: {
   expected_output?: string;
   selected_files?: string[];
 }) {
+  // Ensure user record exists before creating issue
+  await ensureUserRecord();
+
+  const user = (await supabase.auth.getUser()).data.user;
+  if (!user) throw new Error('User not authenticated');
+
   const { data: issue, error } = await supabase
     .from('issues')
     .insert({
-      user_id: (await supabase.auth.getUser()).data.user?.id,
+      user_id: user.id,
       project_id: data.project_id,
       title: data.title,
       description: data.description,
@@ -223,10 +348,14 @@ export async function createIssue(data: {
 }
 
 export async function getIssues(projectId: string) {
+  const user = (await supabase.auth.getUser()).data.user;
+  if (!user) throw new Error('User not authenticated');
+
   const { data, error } = await supabase
     .from('issues')
     .select('*')
     .eq('project_id', projectId)
+    .eq('user_id', user.id)
     .order('created_at', { ascending: false });
 
   if (error) throw error;
@@ -234,10 +363,14 @@ export async function getIssues(projectId: string) {
 }
 
 export async function getIssue(id: string) {
+  const user = (await supabase.auth.getUser()).data.user;
+  if (!user) throw new Error('User not authenticated');
+
   const { data, error } = await supabase
     .from('issues')
     .select('*')
     .eq('id', id)
+    .eq('user_id', user.id)
     .single();
 
   if (error) throw error;
@@ -248,10 +381,14 @@ export async function updateIssue(
   id: string,
   updates: Partial<DbIssue>
 ) {
+  const user = (await supabase.auth.getUser()).data.user;
+  if (!user) throw new Error('User not authenticated');
+
   const { data, error } = await supabase
     .from('issues')
     .update({ ...updates, updated_at: new Date().toISOString() })
     .eq('id', id)
+    .eq('user_id', user.id)
     .select()
     .single();
 
@@ -260,7 +397,14 @@ export async function updateIssue(
 }
 
 export async function deleteIssue(id: string) {
-  const { error } = await supabase.from('issues').delete().eq('id', id);
+  const user = (await supabase.auth.getUser()).data.user;
+  if (!user) throw new Error('User not authenticated');
+
+  const { error } = await supabase
+    .from('issues')
+    .delete()
+    .eq('id', id)
+    .eq('user_id', user.id);
 
   if (error) throw error;
 }
