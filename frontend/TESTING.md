@@ -85,13 +85,19 @@ All component tests include accessibility checks using axe-core:
 
 ## CI/CD
 
-Tests run automatically in GitHub Actions on push and PR:
+Tests run automatically in GitHub Actions:
 
-1. **Component Tests** - Fast feedback on code changes
-2. **E2E Tests** - Full browser testing with Playwright
-3. **Reports** - Uploaded as artifacts
+**On Pull Requests:**
+- Component tests run first (fast feedback)
+- E2E tests run with full browser testing
+- Results show as checks on your PR
+- Must pass before merging
 
-View results in the Actions tab on GitHub.
+**On Push to main/master:**
+- Full test suite runs
+- Reports uploaded as artifacts
+
+View detailed results in the Actions tab on GitHub.
 
 ## Configuration Files
 

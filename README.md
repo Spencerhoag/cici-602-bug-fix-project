@@ -215,7 +215,10 @@ npm run test:coverage
 - Responsive design (mobile, tablet, desktop)
 - Button functionality and visual feedback
 
-E2E tests run automatically in CI/CD via GitHub Actions.
+**Automated Testing:**
+- Component tests run locally during development
+- Full test suite (component + E2E) runs automatically on **pull requests**
+- Results appear as GitHub Actions checks on your PR
 
 See [frontend/TESTING.md](./frontend/TESTING.md) for more details.
 
