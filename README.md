@@ -135,6 +135,8 @@ docker exec -it ollama ollama pull codellama:7b-instruct
 - Vite for build tooling
 - TailwindCSS for styling
 - Supabase for authentication and database
+- Vitest + React Testing Library for component tests
+- Playwright + axe-core for E2E and accessibility testing
 
 **Backend:**
 - FastAPI (Python)
@@ -191,14 +193,37 @@ docker exec -it code-fixer-api bash
 
 ### Testing
 
+#### Frontend Tests
+
 ```bash
-# Backend tests
+cd frontend
+
+# Run tests in watch mode
+npm test
+
+# Run tests once
+npm run test:run
+
+# Generate coverage report
+npm run test:coverage
+```
+
+**What's Tested:**
+- Component rendering and interactions
+- WCAG 2.1 AA accessibility compliance
+- Keyboard navigation and ARIA attributes
+- Responsive design (mobile, tablet, desktop)
+- Button functionality and visual feedback
+
+E2E tests run automatically in CI/CD via GitHub Actions.
+
+See [frontend/TESTING.md](./frontend/TESTING.md) for more details.
+
+#### Backend Tests
+
+```bash
 cd app
 pytest
-
-# Frontend tests
-cd frontend
-npm test
 ```
 
 ## Deployment
