@@ -193,7 +193,7 @@ docker exec -it code-fixer-api bash
 
 ### Testing
 
-#### Frontend Tests
+#### Component Tests (Frontend)
 
 ```bash
 cd frontend
@@ -208,19 +208,37 @@ npm run test:run
 npm run test:coverage
 ```
 
+#### E2E Tests (Full Stack)
+
+```bash
+# First time setup (install Playwright browsers)
+npm run e2e:setup
+
+# Start all services (Supabase, Backend, Ollama)
+npm run e2e:start
+
+# Run E2E tests
+npm run e2e:test
+
+# Stop all services
+npm run e2e:stop
+```
+
 **What's Tested:**
 - Component rendering and interactions
 - WCAG 2.1 AA accessibility compliance
 - Keyboard navigation and ARIA attributes
 - Responsive design (mobile, tablet, desktop)
 - Button functionality and visual feedback
+- Full stack authentication flow
+- Backend API integration
 
 **Automated Testing:**
 - Component tests run locally during development
-- Full test suite (component + E2E) runs automatically on **pull requests**
+- Full test suite (lint + component + backend + E2E) runs automatically on **pull requests**
 - Results appear as GitHub Actions checks on your PR
 
-See [frontend/TESTING.md](./frontend/TESTING.md) for more details.
+See [frontend/TESTING.md](./frontend/TESTING.md) and [E2E_SETUP.md](./E2E_SETUP.md) for more details.
 
 #### Backend Tests
 
