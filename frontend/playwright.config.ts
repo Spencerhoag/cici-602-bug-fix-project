@@ -9,7 +9,7 @@ export default defineConfig({
   reporter: process.env.CI ? 'github' : 'html',
 
   use: {
-    baseURL: 'http://localhost:5173',
+    baseURL: 'http://localhost:3000',
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
   },
@@ -23,7 +23,7 @@ export default defineConfig({
 
   webServer: process.env.CI ? {
     command: 'npm run dev -- --host 0.0.0.0',
-    url: 'http://localhost:5173',
+    url: 'http://localhost:3000',
     reuseExistingServer: false,
     timeout: 120 * 1000,
     stdout: 'pipe',

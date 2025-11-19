@@ -13,6 +13,8 @@ npm run test:run
 npm run test:coverage
 ```
 
+**Note:** E2E tests are designed to run in CI. For local development, use component tests.
+
 ## What's Tested
 
 **Component Tests (15 passing):**
