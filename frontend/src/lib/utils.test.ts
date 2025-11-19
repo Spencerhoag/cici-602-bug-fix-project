@@ -118,8 +118,12 @@ describe('utils', () => {
     })
 
     it('works with component variant patterns', () => {
-      const variant = 'primary'
-      const size = 'lg'
+      // Simulate real-world usage where variant comes from props
+      const getVariant = (): 'primary' | 'secondary' => 'primary'
+      const getSize = (): 'sm' | 'lg' => 'lg'
+
+      const variant = getVariant()
+      const size = getSize()
 
       const result = cn(
         'base-button',
