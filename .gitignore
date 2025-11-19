@@ -1,2 +1,6 @@
 .env
 repair_data/
+
+# Supabase
+supabase/.branches
+supabase/.temp

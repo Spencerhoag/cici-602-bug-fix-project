@@ -22,9 +22,11 @@ export default defineConfig({
   ],
 
   webServer: process.env.CI ? {
-    command: 'npm run dev -- --host',
+    command: 'npm run dev -- --host 0.0.0.0',
     url: 'http://localhost:5173',
     reuseExistingServer: false,
-    timeout: 120000,
+    timeout: 120 * 1000,
+    stdout: 'pipe',
+    stderr: 'pipe',
   } : undefined,
 })
