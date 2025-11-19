@@ -46,13 +46,13 @@ describe('Button Component', () => {
 
       render(<Button onClick={handleClick}>Click me</Button>)
 
-      await user.click(screen.getByRole('button'))
+      const button = screen.getByRole('button')
+      await user.click(button)
       expect(handleClick).toHaveBeenCalledTimes(1)
     })
 
     it('does not call onClick when disabled', async () => {
       const handleClick = vi.fn()
-      const user = userEvent.setup()
 
       render(<Button onClick={handleClick} disabled>Click me</Button>)
 

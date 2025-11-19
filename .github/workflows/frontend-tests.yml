@@ -106,7 +106,10 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          # Install requirements if file exists, otherwise just install test deps
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          fi
           pip install pytest pytest-cov pytest-asyncio
 
       - name: Run backend tests

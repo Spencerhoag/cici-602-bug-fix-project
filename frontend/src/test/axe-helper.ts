@@ -10,7 +10,7 @@ export async function runAxe(
   container: Element,
   options?: RunOptions
 ): Promise<AxeResults> {
-  const results = await axe.run(container, options)
+  const results = await axe.run(container, options || {})
   return results
 }
 
