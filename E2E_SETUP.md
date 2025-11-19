@@ -79,7 +79,7 @@ To run E2E tests locally, you need:
 
 5. **Start backend:**
    ```bash
-   docker-compose up -d
+   docker compose up -d
    ```
 
 6. **Run tests:**
@@ -115,7 +115,7 @@ After running tests:
 supabase stop
 
 # Stop backend
-docker-compose down -v
+docker compose down -v
 ```
 
 ## CI/CD Workflow Files
@@ -142,7 +142,7 @@ supabase db reset
 
 ### Backend not accessible
 ```bash
-docker-compose logs app
+docker compose logs app
 ```
 
 ### Port conflicts

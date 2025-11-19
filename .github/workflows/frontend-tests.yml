@@ -249,7 +249,7 @@ jobs:
           EOF
 
           # Start backend only (not frontend - Playwright will start that)
-          docker-compose up -d app ollama
+          docker compose up -d app ollama
 
       - name: Wait for services to be ready
         run: |
@@ -302,7 +302,7 @@ jobs:
       - name: Cleanup
         if: always()
         run: |
-          docker-compose down -v
+          docker compose down -v
           supabase stop
 
   test-summary:
