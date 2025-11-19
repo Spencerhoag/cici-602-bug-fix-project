@@ -1,0 +1,11 @@
+{
+  "name": "cici-602-bug-fix-project",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "e2e:setup": "./scripts/e2e-setup.sh",
+    "e2e:start": "./scripts/e2e-start.sh",
+    "e2e:stop": "./scripts/e2e-stop.sh",
+    "e2e:test": "cd frontend && npm run test:e2e"
+  }
+}

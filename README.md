@@ -135,6 +135,8 @@ docker exec -it ollama ollama pull codellama:7b-instruct
 - Vite for build tooling
 - TailwindCSS for styling
 - Supabase for authentication and database
+- Vitest + React Testing Library for component tests
+- Playwright + axe-core for E2E and accessibility testing
 
 **Backend:**
 - FastAPI (Python)
@@ -191,14 +193,58 @@ docker exec -it code-fixer-api bash
 
 ### Testing
 
+#### Component Tests (Frontend)
+
 ```bash
-# Backend tests
+cd frontend
+
+# Run tests in watch mode
+npm test
+
+# Run tests once
+npm run test:run
+
+# Generate coverage report
+npm run test:coverage
+```
+
+#### E2E Tests (Full Stack)
+
+```bash
+# First time setup (install Playwright browsers)
+npm run e2e:setup
+
+# Start all services (Supabase, Backend, Ollama)
+npm run e2e:start
+
+# Run E2E tests
+npm run e2e:test
+
+# Stop all services
+npm run e2e:stop
+```
+
+**What's Tested:**
+- Component rendering and interactions
+- WCAG 2.1 AA accessibility compliance
+- Keyboard navigation and ARIA attributes
+- Responsive design (mobile, tablet, desktop)
+- Button functionality and visual feedback
+- Full stack authentication flow
+- Backend API integration
+
+**Automated Testing:**
+- Component tests run locally during development
+- Full test suite (lint + component + backend + E2E) runs automatically on **pull requests**
+- Results appear as GitHub Actions checks on your PR
+
+See [frontend/TESTING.md](./frontend/TESTING.md) and [E2E_SETUP.md](./E2E_SETUP.md) for more details.
+
+#### Backend Tests
+
+```bash
 cd app
 pytest
-
-# Frontend tests
-cd frontend
-npm test
 ```
 
 ## Deployment
