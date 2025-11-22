@@ -5,6 +5,7 @@ import { Header } from "@/components/layout/Header";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { CreateProject } from "@/components/project/CreateProject";
 import { ManageProject } from "@/components/project/ManageProject";
+import { ManageGroups } from "@/components/project/ManageGroups";
 import { CreateIssue } from "@/components/issue/CreateIssue";
 import { EditIssue } from "@/components/issue/EditIssue";
 import { DiffView } from "@/components/ai/DiffView";
@@ -74,6 +75,7 @@ function MainApp() {
   const [selectedIssueId, setSelectedIssueId] = useState<string>();
   const [createProjectOpen, setCreateProjectOpen] = useState(false);
   const [manageProjectOpen, setManageProjectOpen] = useState(false);
+  const [manageGroupsOpen, setManageGroupsOpen] = useState(false);
   const [createIssueOpen, setCreateIssueOpen] = useState(false);
   const [createIssueProjectId, setCreateIssueProjectId] = useState<string>();
   const [editIssueOpen, setEditIssueOpen] = useState(false);
@@ -559,6 +561,7 @@ function MainApp() {
               setSelectedProjectId(projectId);
               setManageProjectOpen(true);
             }}
+            onManageGroups={() => setManageGroupsOpen(true)}
           />
         </div>
 
@@ -861,6 +864,10 @@ function MainApp() {
       </div>
 
       {/* Modals */}
+      <ManageGroups
+        open={manageGroupsOpen}
+        onOpenChange={setManageGroupsOpen}
+      />
       <CreateProject
         open={createProjectOpen}
         onOpenChange={setCreateProjectOpen}
