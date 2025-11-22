@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, memo } from "react";
-import { Plus, ChevronRight, ChevronDown, FolderPlus, Github, GitPullRequest, GitMerge, Settings } from "lucide-react";
+import { Plus, ChevronRight, ChevronDown, FolderPlus, Github, GitPullRequest, GitMerge, Settings, Users } from "lucide-react";
 import {
   SiPython, SiJavascript, SiTypescript, SiReact, SiOpenjdk,
   SiCplusplus, SiC, SiGo, SiRust, SiRuby, SiPhp, SiSwift,
@@ -22,6 +22,7 @@ interface SidebarProps {
   onCreateProject?: () => void;
   onCreateIssue?: (projectId: string) => void;
   onManageProject?: (projectId: string) => void;
+  onManageGroups?: () => void;
 }
 
 const getTopLanguages = (files: string[]): Array<{ icon: React.ComponentType<{ className?: string }>; name: string; color: string }> => {
@@ -75,6 +76,7 @@ export const Sidebar = memo(function Sidebar({
   onCreateProject,
   onCreateIssue,
   onManageProject,
+  onManageGroups,
 }: SidebarProps) {
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(
     new Set(projects.map((p) => p.id))
@@ -113,14 +115,26 @@ export const Sidebar = memo(function Sidebar({
       {/* Header */}
       <div className="p-2 md:p-3 border-b flex items-center justify-between">
         <h2 className="font-semibold text-xs">Projects</h2>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onCreateProject}
-          className="h-7 w-7 p-0"
-        >
-          <FolderPlus className="h-3.5 w-3.5" />
-        </Button>
+        <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onManageGroups}
+            className="h-7 w-7 p-0"
+            title="Manage Groups"
+          >
+            <Users className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onCreateProject}
+            className="h-7 w-7 p-0"
+            title="Create Project"
+          >
+            <FolderPlus className="h-3.5 w-3.5" />
+          </Button>
+        </div>
       </div>
 
       {/* Projects List */}

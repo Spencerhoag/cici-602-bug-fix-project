@@ -127,11 +127,32 @@ export async function getProjects() {
   const user = (await supabase.auth.getUser()).data.user;
   if (!user) throw new Error('User not authenticated');
 
-  const { data, error } = await supabase
-    .from('projects')
-    .select('*')
-    .eq('user_id', user.id)
-    .order('name', { ascending: true });
+  // Step 1: Get the list of group IDs the user is a member of
+  const { data: userGroups, error: groupsError } = await supabase
+    .from('user_groups')
+    .select('group_id')
+    .eq('user_id', user.id);
+
+  if (groupsError) {
+    console.error("Error fetching user groups:", groupsError);
+    throw groupsError;
+  }
+
+  const groupIds = userGroups.map(g => g.group_id);
+
+  // Step 2: Build the query to fetch projects
+  const query = supabase.from('projects').select('*');
+
+  if (groupIds.length > 0) {
+    // If the user is in groups, fetch projects they own OR that are in their groups
+    query.or(`user_id.eq.${user.id},group_id.in.(${groupIds.join(',')})`);
+  } else {
+    // If the user is in no groups, only fetch projects they own
+    query.eq('user_id', user.id);
+  }
+
+  // Execute the query
+  const { data, error } = await query.order('name', { ascending: true });
 
   if (error) throw error;
   return data as DbProject[];
@@ -475,4 +496,74 @@ export async function deleteIssue(id: string) {
     .eq('user_id', user.id);
 
   if (error) throw error;
+}
+
+// ============================================
+// GROUPS
+// ============================================
+
+export interface DbGroup {
+  id: string;
+  name: string;
+  owner_id: string;
+}
+
+export async function getGroups() {
+  const user = (await supabase.auth.getUser()).data.user;
+  if (!user) throw new Error('User not authenticated');
+
+  const { data, error } = await supabase
+    .from('user_groups')
+    .select('groups(*)')
+    .eq('user_id', user.id);
+
+  if (error) throw error;
+  
+  if (!data) {
+    return [];
+  }
+
+  // The result is an array of objects like [{ groups: { ... } }, { groups: null }]
+  // We need to map to the 'groups' property and filter out any nulls.
+  // Supabase join queries can return an array of single-item arrays, so we flatten the result.
+  const groups = data.map(item => item.groups).filter(Boolean).flat();
+
+  return groups as DbGroup[];
+}
+
+export async function createGroup(name: string) {
+  const user = (await supabase.auth.getUser()).data.user;
+  if (!user) throw new Error('User not authenticated');
+
+  // 1. Create the group
+  const { data: group, error: createError } = await supabase
+    .from('groups')
+    .insert({
+      name,
+      owner_id: user.id,
+    })
+    .select()
+    .single();
+
+  if (createError) throw createError;
+
+  // 2. Add the owner to the user_groups table as an admin
+  const { error: linkError } = await supabase
+    .from('user_groups')
+    .insert({
+      user_id: user.id,
+      group_id: group.id,
+      role: 'admin',
+    });
+
+  if (linkError) {
+    // If linking fails, we should probably roll back the group creation.
+    // For now, we'll just log the error and throw.
+    console.error("Failed to link user to new group:", linkError);
+    // Attempt to delete the orphaned group
+    await supabase.from('groups').delete().eq('id', group.id);
+    throw linkError;
+  }
+
+  return group as DbGroup;
 }

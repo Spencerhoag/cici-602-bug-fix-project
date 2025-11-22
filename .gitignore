@@ -1,5 +1,6 @@
 .env
 repair_data/
+GEMINI*
 
 # Supabase
 supabase/.branches
