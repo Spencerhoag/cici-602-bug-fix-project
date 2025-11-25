@@ -83,7 +83,7 @@ export function AuthPage() {
   // Show email verification screen after signup
   if (showEmailVerification) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background p-4">
+      <main className="min-h-screen flex items-center justify-center bg-background p-4">
         <Card className="w-full max-w-md">
           <CardContent className="p-8 text-center">
             <div className="mb-4 flex justify-center">
@@ -130,12 +130,12 @@ export function AuthPage() {
             </Button>
           </CardContent>
         </Card>
-      </div>
+      </main>
     );
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
+    <main className="min-h-screen flex items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <CardTitle className="text-3xl font-bold">CICI</CardTitle>
@@ -260,6 +260,6 @@ export function AuthPage() {
           </Tabs>
         </CardContent>
       </Card>
-    </div>
+    </main>
   );
 }
