@@ -183,7 +183,8 @@ jobs:
             CREATE EXTENSION IF NOT EXISTS pgcrypto;
           "
 
-          # Create test user in auth.users table with minimal required fields
+          # Create test user in auth.users table
+          # Note: confirmed_at is a generated column, use email_confirmed_at instead
           psql "postgresql://postgres:postgres@localhost:54322/postgres" -c "
             INSERT INTO auth.users (
               instance_id,
@@ -192,7 +193,7 @@ jobs:
               role,
               email,
               encrypted_password,
-              confirmed_at,
+              email_confirmed_at,
               created_at,
               updated_at,
               raw_app_meta_data,
