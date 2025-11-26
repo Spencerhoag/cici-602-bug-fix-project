@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Upload, Link as LinkIcon } from "lucide-react";
+import { Upload, Link as LinkIcon, Loader2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -13,6 +13,9 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { cloneGitHubRepo, validateGitHubUrl } from "@/lib/api";
+import type { GitHubFile } from "@/lib/types";
+import { toast } from "sonner";
 
 interface CreateProjectProps {
   open: boolean;
@@ -22,6 +25,8 @@ interface CreateProjectProps {
     description?: string;
     files?: File[];
     filePaths?: string[]; // Relative paths for each file to preserve folder structure
+    githubUrl?: string;
+    githubRepoName?: string;
   }) => void;
 }
 
@@ -32,6 +37,10 @@ export function CreateProject({ open, onOpenChange, onCreateProject }: CreatePro
   const [filePaths, setFilePaths] = useState<string[]>([]);
   const [githubUrl, setGithubUrl] = useState("");
   const [uploadMode, setUploadMode] = useState<"files" | "folder">("files");
+  const [isCloning, setIsCloning] = useState(false);
+  const [clonedFiles, setClonedFiles] = useState<GitHubFile[]>([]);
+  const [repoName, setRepoName] = useState("");
+  const [selectedTab, setSelectedTab] = useState<"upload" | "github">("upload");
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -51,8 +60,61 @@ export function CreateProject({ open, onOpenChange, onCreateProject }: CreatePro
     }
   };
 
+  const handleCloneGitHub = async () => {
+    if (!githubUrl) {
+      toast.error("Please enter a GitHub URL");
+      return;
+    }
+
+    const isValid = await validateGitHubUrl(githubUrl);
+    if (!isValid) {
+      toast.error("Invalid GitHub URL. Please use format: https://github.com/username/repo");
+      return;
+    }
+
+    setIsCloning(true);
+    try {
+      const response = await cloneGitHubRepo({ url: githubUrl });
+      setClonedFiles(response.files);
+      setRepoName(response.repo_name);
+
+      // Auto-populate project name if empty
+      if (!name) {
+        setName(response.repo_name);
+      }
+
+      toast.success(`Successfully cloned ${response.total_files} files from ${response.repo_name}`);
+    } catch (error) {
+      console.error("Clone error:", error);
+      toast.error(error instanceof Error ? error.message : "Failed to clone repository");
+      setClonedFiles([]);
+      setRepoName("");
+    } finally {
+      setIsCloning(false);
+    }
+  };
+
   const handleSubmit = () => {
-    onCreateProject({ name, description, files, filePaths });
+    if (selectedTab === "github") {
+      // Convert GitHub files to File objects
+      const githubFiles = clonedFiles.map(file => {
+        const blob = new Blob([file.content], { type: 'text/plain' });
+        return new File([blob], file.name, { type: 'text/plain' });
+      });
+      const githubPaths = clonedFiles.map(file => file.path);
+
+      onCreateProject({
+        name,
+        description,
+        files: githubFiles,
+        filePaths: githubPaths,
+        githubUrl,
+        githubRepoName: repoName
+      });
+    } else {
+      onCreateProject({ name, description, files, filePaths });
+    }
+
     // Reset form
     setName("");
     setDescription("");
@@ -60,6 +122,9 @@ export function CreateProject({ open, onOpenChange, onCreateProject }: CreatePro
     setFilePaths([]);
     setGithubUrl("");
     setUploadMode("files");
+    setClonedFiles([]);
+    setRepoName("");
+    setSelectedTab("upload");
     onOpenChange(false);
   };
 
@@ -96,15 +161,15 @@ export function CreateProject({ open, onOpenChange, onCreateProject }: CreatePro
             />
           </div>
 
-          <Tabs defaultValue="upload" className="w-full">
+          <Tabs defaultValue="upload" value={selectedTab} onValueChange={(v) => setSelectedTab(v as "upload" | "github")} className="w-full">
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="upload">
                 <Upload className="h-4 w-4 mr-2" />
                 Upload Files
               </TabsTrigger>
-              <TabsTrigger value="github" disabled>
+              <TabsTrigger value="github">
                 <LinkIcon className="h-4 w-4 mr-2" />
-                GitHub (Coming Soon)
+                GitHub Repository
               </TabsTrigger>
             </TabsList>
 
@@ -184,14 +249,56 @@ export function CreateProject({ open, onOpenChange, onCreateProject }: CreatePro
 
             <TabsContent value="github" className="mt-4">
               <div className="space-y-4">
-                <Input
-                  placeholder="https://github.com/username/repo"
-                  value={githubUrl}
-                  onChange={(e) => setGithubUrl(e.target.value)}
-                />
-                <p className="text-xs text-muted-foreground">
-                  GitHub integration coming soon! For now, please use file upload.
-                </p>
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="https://github.com/username/repo"
+                    value={githubUrl}
+                    onChange={(e) => setGithubUrl(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !isCloning) {
+                        handleCloneGitHub();
+                      }
+                    }}
+                  />
+                  <Button
+                    onClick={handleCloneGitHub}
+                    disabled={!githubUrl || isCloning}
+                    className="whitespace-nowrap"
+                  >
+                    {isCloning ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Cloning...
+                      </>
+                    ) : (
+                      "Clone Repo"
+                    )}
+                  </Button>
+                </div>
+
+                {clonedFiles.length > 0 && (
+                  <div className="border rounded-lg p-4">
+                    <div className="text-sm font-medium mb-2">
+                      Cloned files from {repoName} ({clonedFiles.length} files):
+                    </div>
+                    <div className="max-h-64 overflow-y-auto text-xs text-muted-foreground space-y-1">
+                      {clonedFiles.map((file, idx) => (
+                        <div key={idx} className="font-mono flex items-center gap-2">
+                          <span className="flex-1">{file.path}</span>
+                          <span className="text-xs opacity-50">
+                            {(file.size / 1024).toFixed(1)}KB
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {!clonedFiles.length && !isCloning && (
+                  <p className="text-xs text-muted-foreground">
+                    Enter a public GitHub repository URL to clone and upload all files.
+                  </p>
+                )}
               </div>
             </TabsContent>
           </Tabs>
@@ -201,7 +308,14 @@ export function CreateProject({ open, onOpenChange, onCreateProject }: CreatePro
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button onClick={handleSubmit} disabled={!name || files.length === 0}>
+          <Button
+            onClick={handleSubmit}
+            disabled={
+              !name ||
+              (selectedTab === "upload" && files.length === 0) ||
+              (selectedTab === "github" && clonedFiles.length === 0)
+            }
+          >
             Create Project
           </Button>
         </DialogFooter>
