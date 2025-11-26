@@ -95,10 +95,14 @@ export interface DbProject {
   user_id: string;
   name: string;
   storage_path: string;
+  github_url?: string;
+  github_repo_name?: string;
 }
 
 export async function createProject(data: {
   name: string;
+  githubUrl?: string;
+  githubRepoName?: string;
 }) {
   // Ensure user record exists before creating project
   await ensureUserRecord();
@@ -115,6 +119,8 @@ export async function createProject(data: {
       user_id: user.id,
       name: data.name,
       storage_path: storagePath,
+      github_url: data.githubUrl,
+      github_repo_name: data.githubRepoName,
     })
     .select()
     .single();

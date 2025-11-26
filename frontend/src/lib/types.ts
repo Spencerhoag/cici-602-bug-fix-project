@@ -14,10 +14,13 @@ export interface Project {
   description?: string;
   language?: ProjectLanguage;
   repository?: string;
+  githubUrl?: string;          // GitHub repo URL if created from GitHub
+  githubRepoName?: string;     // GitHub repo name (e.g., "user/repo")
   createdAt: Date | string;
   updatedAt?: Date;
   files?: FileNode[];
   issues: Issue[];
+  isUploading?: boolean;       // True while files are being uploaded
 }
 
 export interface FileNode {
@@ -101,6 +104,25 @@ export interface ReviewChangesRequest {
   iterationId: string;
   changeId: string;
   accepted: boolean;
+}
+
+export interface GitHubCloneRequest {
+  url: string;
+  token?: string;
+}
+
+export interface GitHubFile {
+  name: string;
+  path: string;
+  content: string;
+  size: number;
+}
+
+export interface GitHubCloneResponse {
+  repo_name: string;
+  files: GitHubFile[];
+  total_files: number;
+  detected_language?: string;
 }
 
 // WebSocket message types
