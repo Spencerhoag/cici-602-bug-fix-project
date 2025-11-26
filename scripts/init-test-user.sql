@@ -2,6 +2,7 @@
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 -- Create test user in auth.users table
+-- Setting all token fields to empty strings to avoid NULL scan errors in GoTrue
 INSERT INTO auth.users (
   instance_id,
   id,
@@ -9,18 +10,12 @@ INSERT INTO auth.users (
   role,
   email,
   encrypted_password,
-  email_confirmed_at,
-  confirmation_sent_at,
-  recovery_sent_at,
-  email_change_sent_at,
+  confirmed_at,
   created_at,
   updated_at,
   raw_app_meta_data,
   raw_user_meta_data,
-  is_super_admin,
   confirmation_token,
-  email_change,
-  email_change_token_new,
   recovery_token
 )
 VALUES (
@@ -33,14 +28,8 @@ VALUES (
   NOW(),
   NOW(),
   NOW(),
-  NOW(),
-  NOW(),
-  NOW(),
   '{"provider":"email","providers":["email"]}',
   '{}',
-  false,
-  '',
-  '',
   '',
   ''
 )

@@ -563,7 +563,7 @@ function MainApp() {
         </div>
 
         {/* Main Content */}
-        <div className="flex-1 overflow-auto bg-background">
+        <main className="flex-1 overflow-auto bg-background">
           {!selectedIssue ? (
             <div className="h-full flex items-center justify-center p-4">
               <div className="text-center space-y-3">
@@ -857,7 +857,7 @@ function MainApp() {
               )}
             </div>
           )}
-        </div>
+        </main>
       </div>
 
       {/* Modals */}
