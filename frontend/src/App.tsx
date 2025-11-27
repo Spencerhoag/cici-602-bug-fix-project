@@ -106,6 +106,7 @@ function MainApp() {
       // Load issues and files for each project
       const projectsWithIssues = await Promise.all(
         dbProjects.map(async (project) => {
+          // ... (keep existing logic)
           const [dbIssues, dbFiles] = await Promise.all([
             getIssues(project.id),
             getProjectFiles(project.id),
@@ -162,7 +163,10 @@ function MainApp() {
       );
 
       setProjects(projectsWithIssues);
+      
+      // Auto-select logic
       if (projectsWithIssues.length > 0 && !selectedProjectId) {
+        // ...
         setSelectedProjectId(projectsWithIssues[0].id);
       }
     } catch (error) {
@@ -900,6 +904,7 @@ function MainApp() {
       <ManageGroups
         open={manageGroupsOpen}
         onOpenChange={setManageGroupsOpen}
+        onGroupUpdate={loadProjects}
         onSelectGroup={(groupId) => {
           setSelectedGroupId(groupId);
           setManageGroupsOpen(false);

@@ -19,9 +19,10 @@ interface ManageGroupsProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSelectGroup?: (groupId: string | null) => void; // null = all, "personal" = personal only, uuid = specific group
+  onGroupUpdate?: () => void;
 }
 
-export function ManageGroups({ open, onOpenChange, onSelectGroup }: ManageGroupsProps) {
+export function ManageGroups({ open, onOpenChange, onSelectGroup, onGroupUpdate }: ManageGroupsProps) {
   const [groups, setGroups] = useState<DbGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [createGroupOpen, setCreateGroupOpen] = useState(false);
@@ -41,6 +42,11 @@ export function ManageGroups({ open, onOpenChange, onSelectGroup }: ManageGroups
       setLoading(false);
     }
   };
+
+  const handleGroupUpdated = () => {
+    fetchGroups();
+    onGroupUpdate?.();
+  }
 
   useEffect(() => {
     if (open) {
@@ -81,7 +87,7 @@ export function ManageGroups({ open, onOpenChange, onSelectGroup }: ManageGroups
       toast.success("Successfully joined group!");
       setJoinGroupOpen(false);
       setJoinCode("");
-      fetchGroups(); // Refresh list
+      handleGroupUpdated(); // Refresh list and parent
     } catch (error) {
       console.error("Failed to join group:", error);
       toast.error(error instanceof Error ? error.message : "Failed to join group");
@@ -173,7 +179,7 @@ export function ManageGroups({ open, onOpenChange, onSelectGroup }: ManageGroups
       <CreateGroup
         open={createGroupOpen}
         onOpenChange={setCreateGroupOpen}
-        onGroupCreated={fetchGroups}
+        onGroupCreated={handleGroupUpdated}
       />
 
       <Dialog open={joinGroupOpen} onOpenChange={setJoinGroupOpen}>

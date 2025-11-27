@@ -152,34 +152,73 @@ export async function getProjects() {
 
   const groupIds = userGroups.map(g => g.group_id);
 
-  // Step 2: Build the query to fetch projects
-  const query = supabase.from('projects').select('*');
+  // Step 2: Fetch projects using separate queries to ensure reliability
+  
+  // 2a. Fetch personal projects
+  const personalQuery = supabase
+    .from('projects')
+    .select('*')
+    .eq('user_id', user.id);
 
+  // 2b. Fetch group projects (if any)
+  let groupQuery;
   if (groupIds.length > 0) {
-    // If the user is in groups, fetch projects they own OR that are in their groups
-    query.or(`user_id.eq.${user.id},group_id.in.(${groupIds.join(',')})`);
-  } else {
-    // If the user is in no groups, only fetch projects they own
-    query.eq('user_id', user.id);
+    groupQuery = supabase
+      .from('projects')
+      .select('*')
+      .in('group_id', groupIds);
   }
 
-  // Execute the query
-  const { data, error } = await query.order('name', { ascending: true });
+  // Execute queries in parallel
+  const [personalRes, groupRes] = await Promise.all([
+    personalQuery,
+    groupIds.length > 0 ? groupQuery : Promise.resolve({ data: [], error: null })
+  ]);
 
-  if (error) throw error;
-  return data as DbProject[];
+  if (personalRes.error) throw personalRes.error;
+  if (groupRes && groupRes.error) throw groupRes.error;
+
+  // Merge results
+  const personalProjects = personalRes.data || [];
+  const groupProjects = groupRes?.data || [];
+  
+  // Create a map to deduplicate by ID (just in case, though sets should be disjoint)
+  const projectMap = new Map();
+  personalProjects.forEach(p => projectMap.set(p.id, p));
+  groupProjects.forEach(p => projectMap.set(p.id, p));
+
+  const allProjects = Array.from(projectMap.values());
+
+  // Sort by name
+  return allProjects.sort((a, b) => a.name.localeCompare(b.name)) as DbProject[];
 }
 
 export async function getProject(id: string) {
   const user = (await supabase.auth.getUser()).data.user;
   if (!user) throw new Error('User not authenticated');
 
-  const { data, error } = await supabase
-    .from('projects')
-    .select('*')
-    .eq('id', id)
-    .eq('user_id', user.id)
-    .single();
+  // 1. Get the list of group IDs the user is a member of
+  const { data: userGroups, error: groupsError } = await supabase
+    .from('user_groups')
+    .select('group_id')
+    .eq('user_id', user.id);
+
+  if (groupsError) throw groupsError;
+
+  const groupIds = userGroups.map(g => g.group_id);
+
+  // 2. Query project matching ID AND (owner OR group member)
+  const query = supabase.from('projects').select('*').eq('id', id);
+
+  if (groupIds.length > 0) {
+    // If the user is in groups, fetch if they own it OR it's in their groups
+    query.or(`user_id.eq.${user.id},group_id.in.(${groupIds.join(',')})`);
+  } else {
+    // If the user is in no groups, only fetch if they own it
+    query.eq('user_id', user.id);
+  }
+
+  const { data, error } = await query.single();
 
   if (error) throw error;
   return data as DbProject;
