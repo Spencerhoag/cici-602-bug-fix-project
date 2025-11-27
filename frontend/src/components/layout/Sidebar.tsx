@@ -159,7 +159,7 @@ export const Sidebar = memo(function Sidebar({
                     {/* Project Header */}
                     <div
                       className={cn(
-                        "group flex items-center gap-1 px-2 py-3 rounded-md cursor-pointer transition-colors hover:bg-accent/50",
+                        "group flex items-center gap-1 px-2 py-2 rounded-md cursor-pointer transition-colors hover:bg-accent/50",
                         isSelected && !selectedIssueId && "bg-accent"
                       )}
                       onClick={() => toggleProject(project.id)}
@@ -173,38 +173,38 @@ export const Sidebar = memo(function Sidebar({
                       ) : (
                         <div className="w-3" />
                       )}
-                      <div className="flex-1 min-w-0 flex items-center gap-1.5">
-                        <ProjectIcon className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
-                        <div className="font-medium text-xs truncate flex-1 min-w-0">
-                          {project.name}
-                        </div>
-                        <div className="w-4 flex-shrink-0">
-                          {project.isUploading && (
-                            <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
-                          )}
-                        </div>
-                        <div className="text-[10px] text-muted-foreground flex items-center gap-1.5 flex-wrap">
-                          {project.isUploading ? (
-                            <span className="text-blue-500">Uploading files...</span>
-                          ) : (
-                            <>
-                              <span>{project.issues.length} issue{project.issues.length !== 1 ? "s" : ""}</span>
-                              <span>•</span>
-                              <span>{(project as any).fileCount || 0} file{((project as any).fileCount || 0) !== 1 ? "s" : ""}</span>
-                            </>
-                          )}
-                          {(project as any).files && (project as any).files.length > 0 && (
-                            <div className="flex items-center gap-1">
-                              {getTopLanguages((project as any).files).map((lang, i) => {
-                                const Icon = lang.icon;
-                                return (
-                                  <span key={i} title={lang.name}>
-                                    <Icon className={`h-3 w-3 ${lang.color}`} />
-                                  </span>
-                                );
-                              })}
-                            </div>
-                          )}
+                      <div className="flex-1 min-w-0 flex items-center gap-2">
+                        <ProjectIcon className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium text-xs truncate">
+                            {project.name}
+                            {project.isUploading && (
+                              <Loader2 className="h-3 w-3 animate-spin text-muted-foreground ml-1 inline" />
+                            )}
+                          </div>
+                          <div className="text-[10px] text-muted-foreground flex items-center gap-1.5 flex-wrap mt-0.5">
+                            {project.isUploading ? (
+                              <span className="text-blue-500">Uploading files...</span>
+                            ) : (
+                              <>
+                                <span>{project.issues.length} issue{project.issues.length !== 1 ? "s" : ""}</span>
+                                <span>•</span>
+                                <span>{(project as any).fileCount || 0} file{((project as any).fileCount || 0) !== 1 ? "s" : ""}</span>
+                              </>
+                            )}
+                            {(project as any).files && (project as any).files.length > 0 && (
+                              <div className="flex items-center gap-1 ml-1">
+                                {getTopLanguages((project as any).files).map((lang, i) => {
+                                  const Icon = lang.icon;
+                                  return (
+                                    <span key={i} title={lang.name}>
+                                      <Icon className={`h-3 w-3 ${lang.color}`} />
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </div>
                       <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
