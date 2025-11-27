@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
-import { Users, Plus, UserPlus, Link as LinkIcon } from "lucide-react";
+import { Plus, UserPlus, Link as LinkIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -128,7 +128,6 @@ export function ManageGroups({ open, onOpenChange, onSelectGroup, onGroupUpdate 
                     className="flex items-center p-2 rounded-md hover:bg-accent cursor-pointer"
                     onClick={() => handleSelect(null)}
                   >
-                    <Users className="h-5 w-5 mr-3 text-muted-foreground" />
                     <span className="text-sm font-medium flex-1">All Projects</span>
                   </div>
 
@@ -137,7 +136,6 @@ export function ManageGroups({ open, onOpenChange, onSelectGroup, onGroupUpdate 
                     className="flex items-center p-2 rounded-md hover:bg-accent cursor-pointer"
                     onClick={() => handleSelect("personal")}
                   >
-                    <Users className="h-5 w-5 mr-3 text-muted-foreground" />
                     <span className="text-sm font-medium flex-1">Personal Projects</span>
                   </div>
 
@@ -155,7 +153,6 @@ export function ManageGroups({ open, onOpenChange, onSelectGroup, onGroupUpdate 
                       onClick={() => handleSelect(group.id)}
                     >
                       <div className="flex items-center">
-                        <Users className="h-5 w-5 mr-3 text-muted-foreground" />
                         <span className="text-sm font-medium">{group.name}</span>
                       </div>
                       <Button

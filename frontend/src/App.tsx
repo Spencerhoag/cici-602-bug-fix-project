@@ -573,7 +573,7 @@ function MainApp() {
             fixed md:relative inset-y-0 left-0 z-30 md:z-0
             transform transition-transform duration-300 ease-in-out
             ${mobileSidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}
-            w-64 md:w-64 h-full
+            w-72 md:w-72 h-full
           `}
         >
           <Sidebar

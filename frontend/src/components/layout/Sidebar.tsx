@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, memo } from "react";
-import { Plus, ChevronRight, ChevronDown, FolderPlus, Github, GitPullRequest, GitMerge, Settings, Users, Loader2 } from "lucide-react";
+import { Plus, ChevronRight, ChevronDown, FolderPlus, Github, GitPullRequest, GitMerge, Settings, Users, Loader2, User } from "lucide-react";
 import {
   SiPython, SiJavascript, SiTypescript, SiReact, SiOpenjdk,
   SiCplusplus, SiC, SiGo, SiRust, SiRuby, SiPhp, SiSwift,
@@ -152,12 +152,14 @@ export const Sidebar = memo(function Sidebar({
                 const isExpanded = expandedProjects.has(project.id);
                 const isSelected = selectedProjectId === project.id;
 
+                const ProjectIcon = project.groupId ? Users : User;
+
                 return (
                   <div key={project.id} className="space-y-0.5">
                     {/* Project Header */}
                     <div
                       className={cn(
-                        "group flex items-center gap-1 px-2 py-1 rounded-md cursor-pointer transition-colors hover:bg-accent/50",
+                        "group flex items-center gap-1 px-2 py-3 rounded-md cursor-pointer transition-colors hover:bg-accent/50",
                         isSelected && !selectedIssueId && "bg-accent"
                       )}
                       onClick={() => toggleProject(project.id)}
@@ -171,9 +173,12 @@ export const Sidebar = memo(function Sidebar({
                       ) : (
                         <div className="w-3" />
                       )}
-                      <div className="flex-1 min-w-0">
-                        <div className="font-medium text-xs truncate flex items-center gap-1.5">
+                      <div className="flex-1 min-w-0 flex items-center gap-1.5">
+                        <ProjectIcon className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                        <div className="font-medium text-xs truncate flex-1 min-w-0">
                           {project.name}
+                        </div>
+                        <div className="w-4 flex-shrink-0">
                           {project.isUploading && (
                             <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
                           )}
