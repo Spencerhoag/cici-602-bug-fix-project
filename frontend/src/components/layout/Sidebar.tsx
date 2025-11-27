@@ -23,6 +23,7 @@ interface SidebarProps {
   onCreateIssue?: (projectId: string) => void;
   onManageProject?: (projectId: string) => void;
   onManageGroups?: () => void;
+  title?: string;
 }
 
 const getTopLanguages = (files: string[]): Array<{ icon: React.ComponentType<{ className?: string }>; name: string; color: string }> => {
@@ -77,6 +78,7 @@ export const Sidebar = memo(function Sidebar({
   onCreateIssue,
   onManageProject,
   onManageGroups,
+  title = "Projects",
 }: SidebarProps) {
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(
     new Set(projects.map((p) => p.id))
@@ -114,8 +116,8 @@ export const Sidebar = memo(function Sidebar({
     <div className="w-full md:w-64 border-r bg-card flex flex-col h-full">
       {/* Header */}
       <div className="p-2 md:p-3 border-b flex items-center justify-between">
-        <h2 className="font-semibold text-xs">Projects</h2>
-        <div className="flex items-center gap-1">
+        <h2 className="font-semibold text-xs truncate pr-2" title={title}>{title}</h2>
+        <div className="flex items-center gap-1 flex-shrink-0">
           <Button
             variant="ghost"
             size="sm"

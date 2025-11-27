@@ -90,19 +90,24 @@ async function ensureUserRecord() {
 // PROJECTS
 // ============================================
 
-export interface DbProject {
+interface DbProject {
   id: string;
-  user_id: string;
   name: string;
+  description: string | null;
+  repository: string | null;
+  github_url: string | null;
+  github_repo_name: string | null;
+  group_id: string | null;
+  user_id: string;
   storage_path: string;
-  github_url?: string;
-  github_repo_name?: string;
+  created_at: string;
 }
 
 export async function createProject(data: {
   name: string;
   githubUrl?: string;
   githubRepoName?: string;
+  groupId?: string;
 }) {
   // Ensure user record exists before creating project
   await ensureUserRecord();
@@ -121,6 +126,7 @@ export async function createProject(data: {
       storage_path: storagePath,
       github_url: data.githubUrl,
       github_repo_name: data.githubRepoName,
+      group_id: data.groupId || null,
     })
     .select()
     .single();
@@ -572,4 +578,77 @@ export async function createGroup(name: string) {
   }
 
   return group as DbGroup;
+}
+
+// ============================================
+// GROUP INVITES
+// ============================================
+
+export interface DbGroupInvite {
+  id: string;
+  group_id: string;
+  code: string;
+  created_by: string;
+  created_at: string;
+  expires_at?: string;
+}
+
+export async function createGroupInvite(groupId: string) {
+  const user = (await supabase.auth.getUser()).data.user;
+  if (!user) throw new Error('User not authenticated');
+
+  // Generate a simple unique code (using randomUUID if available, or fallback)
+  const code = crypto.randomUUID();
+
+  const { data, error } = await supabase
+    .from('group_invites')
+    .insert({
+      group_id: groupId,
+      code,
+      created_by: user.id,
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data as DbGroupInvite;
+}
+
+export async function joinGroup(inviteCode: string) {
+  const user = (await supabase.auth.getUser()).data.user;
+  if (!user) throw new Error('User not authenticated');
+
+  // 1. Find the invite
+  const { data: invite, error: inviteError } = await supabase
+    .from('group_invites')
+    .select('group_id')
+    .eq('code', inviteCode)
+    .single();
+
+  if (inviteError) throw new Error("Invalid or expired invite code");
+
+  // 2. Check if user is already in the group
+  const { data: existingMember } = await supabase
+    .from('user_groups')
+    .select('*')
+    .eq('user_id', user.id)
+    .eq('group_id', invite.group_id)
+    .maybeSingle();
+
+  if (existingMember) {
+    throw new Error("You are already a member of this group");
+  }
+
+  // 3. Add user to the group
+  const { error: joinError } = await supabase
+    .from('user_groups')
+    .insert({
+      user_id: user.id,
+      group_id: invite.group_id,
+      role: 'member',
+    });
+
+  if (joinError) throw joinError;
+
+  return invite.group_id;
 }
