@@ -488,14 +488,13 @@ export async function createIssue(data: {
 }
 
 export async function getIssues(projectId: string) {
-  const user = (await supabase.auth.getUser()).data.user;
-  if (!user) throw new Error('User not authenticated');
+  // Verify access to the project first (checks owner OR group member)
+  await getProject(projectId);
 
   const { data, error } = await supabase
     .from('issues')
     .select('*')
     .eq('project_id', projectId)
-    .eq('user_id', user.id)
     .order('created_at', { ascending: false });
 
   if (error) throw error;
@@ -506,15 +505,23 @@ export async function getIssue(id: string) {
   const user = (await supabase.auth.getUser()).data.user;
   if (!user) throw new Error('User not authenticated');
 
-  const { data, error } = await supabase
+  // 1. Fetch the issue without checking user_id yet
+  const { data: issue, error } = await supabase
     .from('issues')
     .select('*')
     .eq('id', id)
-    .eq('user_id', user.id)
     .single();
 
   if (error) throw error;
-  return data as DbIssue;
+
+  // 2. Verify access to the project (Owner OR Group Member)
+  try {
+    await getProject(issue.project_id);
+  } catch (e) {
+    throw new Error('You do not have access to this issue');
+  }
+
+  return issue as DbIssue;
 }
 
 export async function updateIssue(
@@ -524,11 +531,23 @@ export async function updateIssue(
   const user = (await supabase.auth.getUser()).data.user;
   if (!user) throw new Error('User not authenticated');
 
+  // 1. Get issue to verify project access
+  const { data: issue, error: fetchError } = await supabase
+    .from('issues')
+    .select('project_id')
+    .eq('id', id)
+    .single();
+  
+  if (fetchError) throw fetchError;
+
+  // 2. Verify project access
+  await getProject(issue.project_id);
+
+  // 3. Update
   const { data, error } = await supabase
     .from('issues')
     .update({ ...updates, updated_at: new Date().toISOString() })
     .eq('id', id)
-    .eq('user_id', user.id)
     .select()
     .single();
 
@@ -540,11 +559,23 @@ export async function deleteIssue(id: string) {
   const user = (await supabase.auth.getUser()).data.user;
   if (!user) throw new Error('User not authenticated');
 
+  // 1. Get issue to verify project access
+  const { data: issue, error: fetchError } = await supabase
+    .from('issues')
+    .select('project_id')
+    .eq('id', id)
+    .single();
+  
+  if (fetchError) throw fetchError;
+
+  // 2. Verify project access
+  await getProject(issue.project_id);
+
+  // 3. Delete
   const { error } = await supabase
     .from('issues')
     .delete()
-    .eq('id', id)
-    .eq('user_id', user.id);
+    .eq('id', id);
 
   if (error) throw error;
 }
