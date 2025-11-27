@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, memo } from "react";
-import { Plus, ChevronRight, ChevronDown, FolderPlus, Github, GitPullRequest, GitMerge, Settings, Users } from "lucide-react";
+import { Plus, ChevronRight, ChevronDown, FolderPlus, Github, GitPullRequest, GitMerge, Settings, Users, Loader2 } from "lucide-react";
 import {
   SiPython, SiJavascript, SiTypescript, SiReact, SiOpenjdk,
   SiCplusplus, SiC, SiGo, SiRust, SiRuby, SiPhp, SiSwift,
@@ -170,13 +170,22 @@ export const Sidebar = memo(function Sidebar({
                         <div className="w-3" />
                       )}
                       <div className="flex-1 min-w-0">
-                        <div className="font-medium text-xs truncate">
+                        <div className="font-medium text-xs truncate flex items-center gap-1.5">
                           {project.name}
+                          {project.isUploading && (
+                            <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+                          )}
                         </div>
                         <div className="text-[10px] text-muted-foreground flex items-center gap-1.5 flex-wrap">
-                          <span>{project.issues.length} issue{project.issues.length !== 1 ? "s" : ""}</span>
-                          <span>•</span>
-                          <span>{(project as any).fileCount || 0} file{((project as any).fileCount || 0) !== 1 ? "s" : ""}</span>
+                          {project.isUploading ? (
+                            <span className="text-blue-500">Uploading files...</span>
+                          ) : (
+                            <>
+                              <span>{project.issues.length} issue{project.issues.length !== 1 ? "s" : ""}</span>
+                              <span>•</span>
+                              <span>{(project as any).fileCount || 0} file{((project as any).fileCount || 0) !== 1 ? "s" : ""}</span>
+                            </>
+                          )}
                           {(project as any).files && (project as any).files.length > 0 && (
                             <div className="flex items-center gap-1">
                               {getTopLanguages((project as any).files).map((lang, i) => {

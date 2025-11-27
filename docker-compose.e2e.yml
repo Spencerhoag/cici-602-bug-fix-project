@@ -38,6 +38,15 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      auth:
+        condition: service_healthy
+      rest:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "kong", "health"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   # Supabase Auth (GoTrue)
   auth:
@@ -62,6 +71,13 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    restart: on-failure:3
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9999/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
 
   # Supabase REST API (PostgREST)
   rest:
@@ -95,7 +111,7 @@ services:
       - rest
       - ollama
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/docs"]
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/docs').raise_for_status()"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -113,6 +129,57 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  # Frontend development server
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: e2e-frontend
+    environment:
+      - VITE_SUPABASE_URL=http://kong:8000
+      - VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE
+      - VITE_API_URL=http://app:8000
+      - VITE_WS_URL=ws://app:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      app:
+        condition: service_healthy
+      kong:
+        condition: service_healthy
+    networks:
+      - default
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+
+  # Playwright E2E tests
+  playwright:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.e2e
+    container_name: e2e-playwright
+    environment:
+      - PLAYWRIGHT_BASE_URL=http://frontend:3000
+      - PLAYWRIGHT_WORKERS=4
+    depends_on:
+      frontend:
+        condition: service_healthy
+    volumes:
+      - ./frontend/playwright-report:/app/playwright-report
+      - ./frontend/test-results:/app/test-results
+    networks:
+      - default
+    profiles:
+      - test
+
+networks:
+  default:
+    driver: bridge
 
 volumes:
   ollama_data:
