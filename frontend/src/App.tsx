@@ -5,6 +5,7 @@ import { Header } from "@/components/layout/Header";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { CreateProject } from "@/components/project/CreateProject";
 import { ManageProject } from "@/components/project/ManageProject";
+import { ManageGroups } from "@/components/project/ManageGroups";
 import { CreateIssue } from "@/components/issue/CreateIssue";
 import { EditIssue } from "@/components/issue/EditIssue";
 import { DiffView } from "@/components/ai/DiffView";
@@ -27,6 +28,7 @@ import {
   updateIssue,
   deleteIssue as dbDeleteIssue,
   deleteProject as dbDeleteProject,
+  getGroups,
 } from "@/lib/database";
 import { createUnifiedDiff } from "@/lib/diffUtils";
 
@@ -69,11 +71,13 @@ export default function App() {
 
 function MainApp() {
   const [projects, setProjects] = useState<any[]>([]);
+  const [groups, setGroups] = useState<{ id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedProjectId, setSelectedProjectId] = useState<string>();
   const [selectedIssueId, setSelectedIssueId] = useState<string>();
   const [createProjectOpen, setCreateProjectOpen] = useState(false);
   const [manageProjectOpen, setManageProjectOpen] = useState(false);
+  const [manageGroupsOpen, setManageGroupsOpen] = useState(false);
   const [createIssueOpen, setCreateIssueOpen] = useState(false);
   const [createIssueProjectId, setCreateIssueProjectId] = useState<string>();
   const [editIssueOpen, setEditIssueOpen] = useState(false);
@@ -82,6 +86,7 @@ function MainApp() {
   const [projectFiles, setProjectFiles] = useState<Record<string, Record<string, FileMetadata>>>({});  // projectId -> fileName -> FileMetadata
   const [_issueRunIds, setIssueRunIds] = useState<Record<string, string>>({});
   const [isProcessing, setIsProcessing] = useState(false);
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null); // null = all, "personal" = personal only, uuid = specific group
 
   // Load projects from database on mount
   useEffect(() => {
@@ -91,11 +96,17 @@ function MainApp() {
   const loadProjects = async () => {
     try {
       setLoading(true);
-      const dbProjects = await getProjects();
+      const [dbProjects, dbGroups] = await Promise.all([
+        getProjects(),
+        getGroups(),
+      ]);
+
+      setGroups(dbGroups);
 
       // Load issues and files for each project
       const projectsWithIssues = await Promise.all(
         dbProjects.map(async (project) => {
+          // ... (keep existing logic)
           const [dbIssues, dbFiles] = await Promise.all([
             getIssues(project.id),
             getProjectFiles(project.id),
@@ -143,6 +154,7 @@ function MainApp() {
             description: undefined,
             repository: undefined,
             issues,
+            groupId: project.group_id, // Store group ID
             createdAt: undefined,
             fileCount: dbFiles.length,
             files: dbFiles.map(f => f.name),
@@ -151,7 +163,10 @@ function MainApp() {
       );
 
       setProjects(projectsWithIssues);
+      
+      // Auto-select logic
       if (projectsWithIssues.length > 0 && !selectedProjectId) {
+        // ...
         setSelectedProjectId(projectsWithIssues[0].id);
       }
     } catch (error) {
@@ -161,6 +176,20 @@ function MainApp() {
       setLoading(false);
     }
   };
+
+  // Filter projects based on selected group
+  const filteredProjects = projects.filter(project => {
+    if (!selectedGroupId) return true; // Show all
+    if (selectedGroupId === "personal") return !project.groupId; // Show only personal (no group ID)
+    return project.groupId === selectedGroupId; // Show specific group
+  });
+
+  // Determine sidebar title
+  const sidebarTitle = !selectedGroupId 
+    ? "All Projects" 
+    : selectedGroupId === "personal" 
+      ? "My Projects" 
+            : `${groups.find(g => g.id === selectedGroupId)?.name || "Group"}'s Projects`;
 
   // Granular update functions to avoid full reloads
   const updateProjectFiles = async (projectId: string) => {
@@ -544,11 +573,11 @@ function MainApp() {
             fixed md:relative inset-y-0 left-0 z-30 md:z-0
             transform transition-transform duration-300 ease-in-out
             ${mobileSidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}
-            w-64 md:w-64 h-full
+            w-72 md:w-72 h-full
           `}
         >
           <Sidebar
-            projects={projects}
+            projects={filteredProjects}
             selectedProjectId={selectedProjectId}
             selectedIssueId={selectedIssueId}
             onProjectSelect={handleProjectSelect}
@@ -559,6 +588,8 @@ function MainApp() {
               setSelectedProjectId(projectId);
               setManageProjectOpen(true);
             }}
+            onManageGroups={() => setManageGroupsOpen(true)}
+            title={sidebarTitle}
           />
         </div>
 
@@ -568,7 +599,16 @@ function MainApp() {
             <div className="h-full flex items-center justify-center p-4">
               <div className="text-center space-y-3">
                 <h2 className="text-3xl md:text-4xl font-bold tracking-tight">Welcome to CICI</h2>
-                <p className="text-base md:text-lg text-muted-foreground">Select an issue to get started</p>
+                <p className="text-base md:text-lg text-muted-foreground">
+                  {projects.length === 0
+                    ? "Create a project to get started"
+                    : "Select an issue to get started"}
+                </p>
+                {selectedGroupId && (
+                  <p className="text-sm text-muted-foreground">
+                    Filtering by: {selectedGroupId === "personal" ? "Personal Projects" : groups.find(g => g.id === selectedGroupId)?.name || "Unknown Group"}
+                  </p>
+                )}
               </div>
             </div>
           ) : (
@@ -861,9 +901,40 @@ function MainApp() {
       </div>
 
       {/* Modals */}
+      <ManageGroups
+        open={manageGroupsOpen}
+        onOpenChange={setManageGroupsOpen}
+        onGroupUpdate={loadProjects}
+        onSelectGroup={(groupId) => {
+          setSelectedGroupId(groupId);
+          setManageGroupsOpen(false);
+          // Clear selection if filtered out
+          if (selectedProjectId) {
+            const project = projects.find(p => p.id === selectedProjectId);
+            if (project) {
+              const shouldShow = !groupId || 
+                (groupId === "personal" && !project.groupId) || 
+                (project.groupId === groupId);
+              
+              if (!shouldShow) {
+                setSelectedProjectId(undefined);
+                setSelectedIssueId(undefined);
+              }
+            }
+          }
+          toast.info(
+            !groupId 
+              ? "Showing all projects" 
+              : groupId === "personal" 
+                ? "Showing personal projects" 
+                : `Showing projects for group: ${groups.find(g => g.id === groupId)?.name}`
+          );
+        }}
+      />
       <CreateProject
         open={createProjectOpen}
         onOpenChange={setCreateProjectOpen}
+        groups={groups}
         onCreateProject={async (data) => {
           try {
             console.log("Create project:", data);
@@ -873,6 +944,7 @@ function MainApp() {
               name: data.name,
               githubUrl: data.githubUrl,
               githubRepoName: data.githubRepoName,
+              groupId: data.groupId,
             });
 
             // Add new project to state immediately (optimistic update)
@@ -885,6 +957,7 @@ function MainApp() {
                 repository: undefined,
                 githubUrl: data.githubUrl,
                 githubRepoName: data.githubRepoName,
+                groupId: data.groupId, // Store group ID
                 issues: [],
                 createdAt: new Date(),
                 fileCount: data.files?.length || 0,
@@ -893,7 +966,14 @@ function MainApp() {
               },
             ]);
 
-            // Select the new project
+            // Select the new project (and ensure filter allows it)
+            if (data.groupId && selectedGroupId && selectedGroupId !== data.groupId) {
+              // If we created a project in a group that's hidden, switch filter or warn
+              toast.warning("Project created in a different group than currently selected");
+            } else if (!data.groupId && selectedGroupId && selectedGroupId !== "personal") {
+               toast.warning("Personal project created but currently viewing a group");
+            }
+            
             setSelectedProjectId(project.id);
 
             // Show initial toast

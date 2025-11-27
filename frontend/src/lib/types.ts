@@ -16,6 +16,7 @@ export interface Project {
   repository?: string;
   githubUrl?: string;          // GitHub repo URL if created from GitHub
   githubRepoName?: string;     // GitHub repo name (e.g., "user/repo")
+  groupId?: string;            // ID of the group this project belongs to (optional)
   createdAt: Date | string;
   updatedAt?: Date;
   files?: FileNode[];

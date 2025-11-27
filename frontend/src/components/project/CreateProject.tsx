@@ -13,6 +13,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { cloneGitHubRepo, validateGitHubUrl } from "@/lib/api";
 import type { GitHubFile } from "@/lib/types";
 import { toast } from "sonner";
@@ -20,6 +27,7 @@ import { toast } from "sonner";
 interface CreateProjectProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  groups?: { id: string; name: string }[];
   onCreateProject: (data: {
     name: string;
     description?: string;
@@ -27,10 +35,11 @@ interface CreateProjectProps {
     filePaths?: string[]; // Relative paths for each file to preserve folder structure
     githubUrl?: string;
     githubRepoName?: string;
+    groupId?: string;
   }) => void;
 }
 
-export function CreateProject({ open, onOpenChange, onCreateProject }: CreateProjectProps) {
+export function CreateProject({ open, onOpenChange, onCreateProject, groups = [] }: CreateProjectProps) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [files, setFiles] = useState<File[]>([]);
@@ -41,6 +50,7 @@ export function CreateProject({ open, onOpenChange, onCreateProject }: CreatePro
   const [clonedFiles, setClonedFiles] = useState<GitHubFile[]>([]);
   const [repoName, setRepoName] = useState("");
   const [selectedTab, setSelectedTab] = useState<"upload" | "github">("upload");
+  const [selectedOwner, setSelectedOwner] = useState<string>("personal");
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -95,6 +105,8 @@ export function CreateProject({ open, onOpenChange, onCreateProject }: CreatePro
   };
 
   const handleSubmit = () => {
+    const groupId = selectedOwner === "personal" ? undefined : selectedOwner;
+
     if (selectedTab === "github") {
       // Convert GitHub files to File objects
       const githubFiles = clonedFiles.map(file => {
@@ -109,10 +121,11 @@ export function CreateProject({ open, onOpenChange, onCreateProject }: CreatePro
         files: githubFiles,
         filePaths: githubPaths,
         githubUrl,
-        githubRepoName: repoName
+        githubRepoName: repoName,
+        groupId
       });
     } else {
-      onCreateProject({ name, description, files, filePaths });
+      onCreateProject({ name, description, files, filePaths, groupId });
     }
 
     // Reset form
@@ -125,6 +138,7 @@ export function CreateProject({ open, onOpenChange, onCreateProject }: CreatePro
     setClonedFiles([]);
     setRepoName("");
     setSelectedTab("upload");
+    setSelectedOwner("personal");
     onOpenChange(false);
   };
 
@@ -139,6 +153,25 @@ export function CreateProject({ open, onOpenChange, onCreateProject }: CreatePro
         </DialogHeader>
 
         <div className="space-y-4">
+          <div>
+            <label className="text-sm font-medium mb-2 block">
+              Project Owner
+            </label>
+            <Select value={selectedOwner} onValueChange={setSelectedOwner}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select owner" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="personal">My Personal Projects</SelectItem>
+                {groups.map((group) => (
+                  <SelectItem key={group.id} value={group.id}>
+                    {group.name} (Group)
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
           <div>
             <label className="text-sm font-medium mb-2 block">
               Project Name
