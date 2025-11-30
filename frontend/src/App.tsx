@@ -563,7 +563,7 @@ function MainApp() {
         </div>
 
         {/* Main Content */}
-        <div className="flex-1 overflow-auto bg-background">
+        <main className="flex-1 overflow-auto bg-background">
           {!selectedIssue ? (
             <div className="h-full flex items-center justify-center p-4">
               <div className="text-center space-y-3">
@@ -857,7 +857,7 @@ function MainApp() {
               )}
             </div>
           )}
-        </div>
+        </main>
       </div>
 
       {/* Modals */}
@@ -871,36 +871,11 @@ function MainApp() {
             // Create project in database
             const project = await dbCreateProject({
               name: data.name,
+              githubUrl: data.githubUrl,
+              githubRepoName: data.githubRepoName,
             });
 
-            // Upload files to storage
-            if (data.files && data.files.length > 0) {
-              const fileMap: Record<string, any> = {};
-
-              for (let i = 0; i < data.files.length; i++) {
-                const file = data.files[i];
-                const relativePath = data.filePaths?.[i];
-
-                // Upload with relative path to preserve folder structure
-                const dbFile = await uploadProjectFile(project.id, file, relativePath);
-
-                // Store file metadata (using the full path as key for nested files)
-                fileMap[dbFile.name] = {
-                  name: dbFile.name,
-                  path: dbFile.path,
-                  size: dbFile.size,
-                  mime_type: dbFile.mime_type,
-                };
-              }
-
-              // Store file metadata in local state
-              setProjectFiles((prev) => ({
-                ...prev,
-                [project.id]: fileMap,
-              }));
-            }
-
-            // Add new project to state
+            // Add new project to state immediately (optimistic update)
             setProjects((prev) => [
               ...prev,
               {
@@ -908,15 +883,107 @@ function MainApp() {
                 name: project.name,
                 description: undefined,
                 repository: undefined,
+                githubUrl: data.githubUrl,
+                githubRepoName: data.githubRepoName,
                 issues: [],
-                createdAt: undefined,
+                createdAt: new Date(),
                 fileCount: data.files?.length || 0,
                 files: data.files?.map((f: File) => f.name) || [],
+                isUploading: true, // Mark as uploading
               },
             ]);
 
             // Select the new project
             setSelectedProjectId(project.id);
+
+            // Show initial toast
+            const totalFiles = data.files?.length || 0;
+            toast.loading(`Uploading ${totalFiles} files...`, {
+              id: `upload-${project.id}`,
+            });
+
+            // Upload files in background (don't await)
+            if (data.files && data.files.length > 0) {
+              // Capture files and paths before async function
+              const filesToUpload = data.files;
+              const filePaths = data.filePaths;
+              const repoName = data.githubRepoName;
+
+              // Start async upload
+              (async () => {
+                try {
+                  const fileMap: Record<string, any> = {};
+                  let uploadedCount = 0;
+
+                  for (let i = 0; i < filesToUpload.length; i++) {
+                    const file = filesToUpload[i];
+                    const relativePath = filePaths?.[i];
+
+                    // Upload with relative path to preserve folder structure
+                    const dbFile = await uploadProjectFile(project.id, file, relativePath);
+
+                    // Store file metadata
+                    fileMap[dbFile.name] = {
+                      name: dbFile.name,
+                      path: dbFile.path,
+                      size: dbFile.size,
+                      mime_type: dbFile.mime_type,
+                    };
+
+                    uploadedCount++;
+
+                    // Update progress toast
+                    toast.loading(`Uploading files... ${uploadedCount}/${totalFiles}`, {
+                      id: `upload-${project.id}`,
+                    });
+                  }
+
+                  // Store file metadata in local state
+                  setProjectFiles((prev) => ({
+                    ...prev,
+                    [project.id]: fileMap,
+                  }));
+
+                  // Mark upload as complete
+                  setProjects((prev) =>
+                    prev.map((p) =>
+                      p.id === project.id ? { ...p, isUploading: false } : p
+                    )
+                  );
+
+                  // Show success message
+                  toast.success("Project created successfully", {
+                    id: `upload-${project.id}`,
+                    description: `${totalFiles} files uploaded${repoName ? ` from ${repoName}` : ''}`
+                  });
+                } catch (uploadError) {
+                  console.error("Failed to upload files:", uploadError);
+
+                  // Mark upload as complete (even on error)
+                  setProjects((prev) =>
+                    prev.map((p) =>
+                      p.id === project.id ? { ...p, isUploading: false } : p
+                    )
+                  );
+
+                  toast.error("Some files failed to upload", {
+                    id: `upload-${project.id}`,
+                    description: uploadError instanceof Error ? uploadError.message : "Unknown error"
+                  });
+                }
+              })();
+            } else {
+              // No files to upload, mark as complete immediately
+              setProjects((prev) =>
+                prev.map((p) =>
+                  p.id === project.id ? { ...p, isUploading: false } : p
+                )
+              );
+
+              toast.success("Project created successfully", {
+                id: `upload-${project.id}`,
+              });
+            }
           } catch (error) {
             console.error("Failed to create project:", error);
             toast.error("Failed to create project", {

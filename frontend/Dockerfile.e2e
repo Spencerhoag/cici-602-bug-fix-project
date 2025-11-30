@@ -1,0 +1,16 @@
+FROM mcr.microsoft.com/playwright:v1.56.1-noble
+
+# Set working directory
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+
+# Install dependencies
+RUN npm ci
+
+# Copy the rest of the application
+COPY . .
+
+# Command will be overridden by docker-compose
+CMD ["npm", "run", "test:e2e"]

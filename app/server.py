@@ -2,11 +2,12 @@ from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import subprocess, uuid, os, shutil, json, tempfile
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List, Dict
 import re
 from pathlib import Path
 import zipfile
 from llm_client import call_llm
+import git
 
 
 app = FastAPI()
@@ -27,6 +28,25 @@ class RepairRequest(BaseModel):
     expected_output: Optional[str] = None
     language: str  # python or java
     entry_file: str | None = None  # chosen by the user in UI if there are multiple files OR auto-detected in repair function if just one file is uploaded
+
+
+class GitHubCloneRequest(BaseModel):
+    url: str
+    token: Optional[str] = None
+
+
+class GitHubFile(BaseModel):
+    name: str
+    path: str
+    content: str
+    size: int
+
+
+class GitHubCloneResponse(BaseModel):
+    repo_name: str
+    files: List[GitHubFile]
+    total_files: int
+    detected_language: Optional[str] = None
 
 
 def run_python(run_id, filename):
@@ -225,6 +245,138 @@ async def upload(file: UploadFile = File(...), language: str = "python"):
             "directory": False,
             "message": "Single file uploaded successfully"
         }
+
+
+def detect_language_from_files(files: List[Path]) -> Optional[str]:
+    """Detect the primary programming language based on file extensions."""
+    extension_counts = {}
+
+    for file_path in files:
+        ext = file_path.suffix.lower()
+        if ext in ['.py', '.java', '.js', '.ts', '.cpp', '.c', '.go', '.rb']:
+            extension_counts[ext] = extension_counts.get(ext, 0) + 1
+
+    if not extension_counts:
+        return None
+
+    # Map extensions to language names
+    ext_to_lang = {
+        '.py': 'python',
+        '.java': 'java',
+        '.js': 'javascript',
+        '.ts': 'typescript',
+        '.cpp': 'cpp',
+        '.c': 'c',
+        '.go': 'go',
+        '.rb': 'ruby'
+    }
+
+    # Get most common extension
+    most_common_ext = max(extension_counts, key=extension_counts.get)
+    return ext_to_lang.get(most_common_ext)
+
+
+@app.post("/github-clone", response_model=GitHubCloneResponse)
+async def github_clone(request: GitHubCloneRequest):
+    """Clone a GitHub repository and return all files with their content."""
+
+    # Validate GitHub URL
+    if not request.url.startswith(("https://github.com/", "http://github.com/")):
+        raise HTTPException(400, "Invalid GitHub URL. Must start with https://github.com/")
+
+    # Extract repo name from URL
+    repo_name = request.url.rstrip('/').split('/')[-1].replace('.git', '')
+
+    # Create temporary directory for cloning
+    temp_dir = tempfile.mkdtemp(prefix=f"github_clone_{repo_name}_")
+
+    try:
+        # Clone the repository
+        print(f"Cloning repository: {request.url}")
+
+        # Build clone URL with token if provided
+        clone_url = request.url
+        if request.token:
+            # Insert token into URL: https://token@github.com/user/repo.git
+            clone_url = request.url.replace("https://", f"https://{request.token}@")
+
+        git.Repo.clone_from(clone_url, temp_dir, depth=1)
+        print(f"Repository cloned to: {temp_dir}")
+
+        # Walk through the repository and collect files
+        files = []
+        all_file_paths = []
+
+        # Ignore common directories that shouldn't be uploaded
+        ignore_dirs = {'.git', '__pycache__', 'node_modules', '.pytest_cache',
+                      'venv', 'env', '.venv', 'build', 'dist', '.idea', '.vscode'}
+
+        # Ignore common file patterns
+        ignore_patterns = {'.pyc', '.pyo', '.class', '.o', '.so', '.dylib',
+                         '.dll', '.exe', '.DS_Store', '.gitignore'}
+
+        for root, dirs, filenames in os.walk(temp_dir):
+            # Remove ignored directories from the walk
+            dirs[:] = [d for d in dirs if d not in ignore_dirs]
+
+            for filename in filenames:
+                file_path = Path(root) / filename
+
+                # Skip ignored file patterns
+                if file_path.suffix in ignore_patterns or file_path.name in ignore_patterns:
+                    continue
+
+                # Get relative path from repo root
+                rel_path = file_path.relative_to(temp_dir)
+                all_file_paths.append(rel_path)
+
+                # Read file content (skip binary files and large files)
+                try:
+                    # Skip files larger than 1MB
+                    file_size = file_path.stat().st_size
+                    if file_size > 1_000_000:
+                        print(f"Skipping large file: {rel_path}")
+                        continue
+
+                    # Try to read as text
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        content = f.read()
+
+                    files.append(GitHubFile(
+                        name=filename,
+                        path=str(rel_path).replace('\\', '/'),  # Normalize path separators
+                        content=content,
+                        size=file_size
+                    ))
+
+                except (UnicodeDecodeError, PermissionError):
+                    # Skip binary files or files we can't read
+                    print(f"Skipping binary/unreadable file: {rel_path}")
+                    continue
+
+        # Detect primary language
+        detected_language = detect_language_from_files(all_file_paths)
+
+        print(f"Collected {len(files)} files from repository")
+
+        return GitHubCloneResponse(
+            repo_name=repo_name,
+            files=files,
+            total_files=len(files),
+            detected_language=detected_language
+        )
+
+    except git.GitCommandError as e:
+        raise HTTPException(400, f"Failed to clone repository: {str(e)}")
+    except Exception as e:
+        raise HTTPException(500, f"Error processing repository: {str(e)}")
+    finally:
+        # Clean up temporary directory
+        try:
+            shutil.rmtree(temp_dir)
+            print(f"Cleaned up temporary directory: {temp_dir}")
+        except Exception as e:
+            print(f"Warning: Failed to clean up temp directory {temp_dir}: {e}")
 
 
 @app.post("/repair/{run_id}")

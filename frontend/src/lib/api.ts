@@ -14,6 +14,8 @@ import type {
   CreateIssueRequest,
   StartIterationRequest,
   ReviewChangesRequest,
+  GitHubCloneRequest,
+  GitHubCloneResponse,
 } from "./types";
 
 // Configuration
@@ -225,6 +227,31 @@ export async function repairCode(runId: string, request: RepairRequest): Promise
 
   if (!response.ok) {
     throw new Error(`Repair failed: ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+// GitHub API
+
+export async function validateGitHubUrl(url: string): Promise<boolean> {
+  // Basic validation
+  const githubUrlPattern = /^https?:\/\/(www\.)?github\.com\/[\w-]+\/[\w.-]+\/?$/;
+  return githubUrlPattern.test(url.trim());
+}
+
+export async function cloneGitHubRepo(request: GitHubCloneRequest): Promise<GitHubCloneResponse> {
+  const response = await fetch(`${API_BASE_URL}/github-clone`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(request),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`GitHub clone failed: ${errorText}`);
   }
 
   return response.json();
