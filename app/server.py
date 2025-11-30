@@ -50,8 +50,6 @@ class GitHubCloneResponse(BaseModel):
 
 
 def run_python(run_id, filename):
-    import os, uuid, subprocess
-
     # repair_data is mounted at /repair_data inside the container
     host_base = f"/repair_data/{run_id}"
     host_src = os.path.join(host_base, filename)
@@ -101,6 +99,70 @@ def run_python(run_id, filename):
 
     return proc.returncode, proc.stdout, proc.stderr
 
+
+def run_java(run_id, main_file):
+    """
+    run_id: folder under /repair_data/<run_id> containing uploaded .java files
+    main_file: the filename that contains the main(...) entrypoint, e.g. "Main.java"
+    """
+
+    host_base = f"/repair_data/{run_id}"
+    host_main_path = os.path.join(host_base, main_file)
+
+    if not os.path.exists(host_base):
+        raise FileNotFoundError(f"Upload directory not found: {host_base}")
+
+    if not os.path.exists(host_main_path):
+        raise FileNotFoundError(f"Main file not found: {host_main_path}")
+
+    runner_name = f"java_runner_{uuid.uuid4().hex[:8]}"
+
+    # Java runner image must:
+    # - copy /work
+    # - run: javac *.java && java MainClass
+    subprocess.run(
+        [
+            "docker", "create", "--name", runner_name,
+            "java-runner",  # <--- This is your custom Java runner image
+            "bash", "-lc",
+            f"javac {main_file.replace('.java','')}.java && java {main_file.replace('.java','')}"
+        ],
+        capture_output=True,
+        text=True,
+        check=True
+    )
+    print("Created docker container:", runner_name)
+
+    # Ensure directory exists inside container
+    dirname = os.path.dirname(main_file)
+    subprocess.run(
+        ["docker", "exec", runner_name, "mkdir", "-p", f"/work/{dirname}"],
+        capture_output=True,
+        text=True
+    )
+    print("Created directory inside container:", dirname)
+
+    # Copy entire directory for multi-file support
+    subprocess.run(
+        ["docker", "cp", host_base + "/.", f"{runner_name}:/work"],
+        capture_output=True,
+        text=True,
+        check=True
+    )
+    print("Copied Java project into container")
+
+    # Run container
+    proc = subprocess.run(
+        ["docker", "start", "-a", runner_name],
+        capture_output=True,
+        text=True
+    )
+    print("Container run complete. Cleaning up.")
+
+    # Cleanup
+    subprocess.run(["docker", "rm", "-f", runner_name], capture_output=True)
+
+    return proc.returncode, proc.stdout, proc.stderr
 
 
 def extract_code_only(text: str) -> str:
