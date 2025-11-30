@@ -7,10 +7,26 @@ CREATE TABLE users (
   username TEXT UNIQUE
 );
 
+-- Create groups table
+CREATE TABLE groups (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  owner_id UUID REFERENCES users(id) ON DELETE CASCADE NOT NULL
+);
+
+-- Create user_groups table for many-to-many relationship
+CREATE TABLE user_groups (
+  user_id UUID REFERENCES users(id) ON DELETE CASCADE NOT NULL,
+  group_id UUID REFERENCES groups(id) ON DELETE CASCADE NOT NULL,
+  role TEXT NOT NULL DEFAULT 'member', -- e.g., 'admin', 'member'
+  PRIMARY KEY (user_id, group_id)
+);
+
 -- Create projects table
 CREATE TABLE projects (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID REFERENCES users(id) ON DELETE CASCADE NOT NULL,
+  group_id UUID REFERENCES groups(id) ON DELETE SET NULL,
   name TEXT NOT NULL,
   storage_path TEXT NOT NULL,
   UNIQUE(user_id, name)
@@ -33,6 +49,7 @@ CREATE TABLE issues (
   id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
   project_id UUID REFERENCES projects(id) ON DELETE CASCADE NOT NULL,
   user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  group_id UUID REFERENCES groups(id) ON DELETE SET NULL,
   title TEXT NOT NULL,
   description TEXT,
   status TEXT NOT NULL DEFAULT 'pending',
@@ -49,14 +66,35 @@ CREATE TABLE issues (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Create group_invites table
+CREATE TABLE IF NOT EXISTS group_invites (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  group_id UUID REFERENCES groups(id) ON DELETE CASCADE NOT NULL,
+  code TEXT UNIQUE NOT NULL, -- Simple unique string for the invite
+  created_by UUID REFERENCES users(id) ON DELETE CASCADE NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  expires_at TIMESTAMPTZ -- Optional expiration
+);
+
+
+
 -- Create indexes
 CREATE INDEX idx_projects_user_id ON projects(user_id);
+CREATE INDEX idx_projects_group_id ON projects(group_id);
 CREATE INDEX idx_project_files_project_id ON project_files(project_id);
 CREATE INDEX idx_issues_project_id ON issues(project_id);
 CREATE INDEX idx_issues_user_id ON issues(user_id);
+CREATE INDEX idx_issues_group_id ON issues(group_id);
+CREATE INDEX idx_user_groups_user_id ON user_groups(user_id);
+CREATE INDEX idx_user_groups_group_id ON user_groups(group_id);
+CREATE INDEX IF NOT EXISTS idx_group_invites_code ON group_invites(code);
+CREATE INDEX IF NOT EXISTS idx_group_invites_group_id ON group_invites(group_id);
 
 -- Disable RLS for development
 ALTER TABLE users DISABLE ROW LEVEL SECURITY;
 ALTER TABLE projects DISABLE ROW LEVEL SECURITY;
 ALTER TABLE project_files DISABLE ROW LEVEL SECURITY;
 ALTER TABLE issues DISABLE ROW LEVEL SECURITY;
+ALTER TABLE groups DISABLE ROW LEVEL SECURITY;
+ALTER TABLE user_groups DISABLE ROW LEVEL SECURITY;
+ALTER TABLE group_invites DISABLE ROW LEVEL SECURITY;

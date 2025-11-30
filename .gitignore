@@ -1,5 +1,8 @@
 .env
 repair_data/
+GEMINI*
+*.DS_Store
+.gemini
 
 # Supabase
 supabase/.branches

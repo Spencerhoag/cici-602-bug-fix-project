@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, memo } from "react";
-import { Plus, ChevronRight, ChevronDown, FolderPlus, Github, GitPullRequest, GitMerge, Settings, Loader2 } from "lucide-react";
+import { Plus, ChevronRight, ChevronDown, FolderPlus, Github, GitPullRequest, GitMerge, Settings, Users, Loader2, User } from "lucide-react";
 import {
   SiPython, SiJavascript, SiTypescript, SiReact, SiOpenjdk,
   SiCplusplus, SiC, SiGo, SiRust, SiRuby, SiPhp, SiSwift,
@@ -22,6 +22,8 @@ interface SidebarProps {
   onCreateProject?: () => void;
   onCreateIssue?: (projectId: string) => void;
   onManageProject?: (projectId: string) => void;
+  onManageGroups?: () => void;
+  title?: string;
 }
 
 const getTopLanguages = (files: string[]): Array<{ icon: React.ComponentType<{ className?: string }>; name: string; color: string }> => {
@@ -75,6 +77,8 @@ export const Sidebar = memo(function Sidebar({
   onCreateProject,
   onCreateIssue,
   onManageProject,
+  onManageGroups,
+  title = "Projects",
 }: SidebarProps) {
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(
     new Set(projects.map((p) => p.id))
@@ -112,15 +116,27 @@ export const Sidebar = memo(function Sidebar({
     <div className="w-full md:w-64 border-r bg-card flex flex-col h-full">
       {/* Header */}
       <div className="p-2 md:p-3 border-b flex items-center justify-between">
-        <h2 className="font-semibold text-xs">Projects</h2>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onCreateProject}
-          className="h-7 w-7 p-0"
-        >
-          <FolderPlus className="h-3.5 w-3.5" />
-        </Button>
+        <h2 className="font-semibold text-xs truncate pr-2" title={title}>{title}</h2>
+        <div className="flex items-center gap-1 flex-shrink-0">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onManageGroups}
+            className="h-7 w-7 p-0"
+            title="Manage Groups"
+          >
+            <Users className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onCreateProject}
+            className="h-7 w-7 p-0"
+            title="Create Project"
+          >
+            <FolderPlus className="h-3.5 w-3.5" />
+          </Button>
+        </div>
       </div>
 
       {/* Projects List */}
@@ -136,12 +152,14 @@ export const Sidebar = memo(function Sidebar({
                 const isExpanded = expandedProjects.has(project.id);
                 const isSelected = selectedProjectId === project.id;
 
+                const ProjectIcon = project.groupId ? Users : User;
+
                 return (
                   <div key={project.id} className="space-y-0.5">
                     {/* Project Header */}
                     <div
                       className={cn(
-                        "group flex items-center gap-1 px-2 py-1 rounded-md cursor-pointer transition-colors hover:bg-accent/50",
+                        "group flex items-center gap-1 px-2 py-2 rounded-md cursor-pointer transition-colors hover:bg-accent/50",
                         isSelected && !selectedIssueId && "bg-accent"
                       )}
                       onClick={() => toggleProject(project.id)}
@@ -155,35 +173,38 @@ export const Sidebar = memo(function Sidebar({
                       ) : (
                         <div className="w-3" />
                       )}
-                      <div className="flex-1 min-w-0">
-                        <div className="font-medium text-xs truncate flex items-center gap-1.5">
-                          {project.name}
-                          {project.isUploading && (
-                            <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
-                          )}
-                        </div>
-                        <div className="text-[10px] text-muted-foreground flex items-center gap-1.5 flex-wrap">
-                          {project.isUploading ? (
-                            <span className="text-blue-500">Uploading files...</span>
-                          ) : (
-                            <>
-                              <span>{project.issues.length} issue{project.issues.length !== 1 ? "s" : ""}</span>
-                              <span>•</span>
-                              <span>{(project as any).fileCount || 0} file{((project as any).fileCount || 0) !== 1 ? "s" : ""}</span>
-                            </>
-                          )}
-                          {(project as any).files && (project as any).files.length > 0 && (
-                            <div className="flex items-center gap-1">
-                              {getTopLanguages((project as any).files).map((lang, i) => {
-                                const Icon = lang.icon;
-                                return (
-                                  <span key={i} title={lang.name}>
-                                    <Icon className={`h-3 w-3 ${lang.color}`} />
-                                  </span>
-                                );
-                              })}
-                            </div>
-                          )}
+                      <div className="flex-1 min-w-0 flex items-center gap-2">
+                        <ProjectIcon className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium text-xs truncate">
+                            {project.name}
+                            {project.isUploading && (
+                              <Loader2 className="h-3 w-3 animate-spin text-muted-foreground ml-1 inline" />
+                            )}
+                          </div>
+                          <div className="text-[10px] text-muted-foreground flex items-center gap-1.5 flex-wrap mt-0.5">
+                            {project.isUploading ? (
+                              <span className="text-blue-500">Uploading files...</span>
+                            ) : (
+                              <>
+                                <span>{project.issues.length} issue{project.issues.length !== 1 ? "s" : ""}</span>
+                                <span>•</span>
+                                <span>{(project as any).fileCount || 0} file{((project as any).fileCount || 0) !== 1 ? "s" : ""}</span>
+                              </>
+                            )}
+                            {(project as any).files && (project as any).files.length > 0 && (
+                              <div className="flex items-center gap-1 ml-1">
+                                {getTopLanguages((project as any).files).map((lang, i) => {
+                                  const Icon = lang.icon;
+                                  return (
+                                    <span key={i} title={lang.name}>
+                                      <Icon className={`h-3 w-3 ${lang.color}`} />
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </div>
                       <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">

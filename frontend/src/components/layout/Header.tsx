@@ -30,7 +30,7 @@ export function Header({ onMenuClick }: HeaderProps) {
         <div className="ml-auto flex items-center gap-2">
           {user && (
             <>
-              <span className="text-xs text-muted-foreground hidden sm:inline">
+              <span className="text-xs text-white hidden sm:inline">
                 {user.email}
               </span>
               <Button variant="ghost" size="sm" className="h-8" onClick={signOut}>
