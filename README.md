@@ -44,6 +44,9 @@ docker-compose down -v
 # View logs
 docker-compose logs -f
 
+# Run backend unit tests
+pytest -q
+
 # Rebuild specific service
 docker-compose build frontend
 docker-compose build app

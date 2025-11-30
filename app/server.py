@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from typing import Optional
 import re
 from pathlib import Path
+import zipfile
 from llm_client import call_llm
 
 
@@ -19,107 +20,67 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-WORKDIR = "/repairs"
+WORKDIR = "/repair_data"
 
 
 class RepairRequest(BaseModel):
     expected_output: Optional[str] = None
     language: str  # python or java
+    entry_file: str | None = None  # chosen by the user in UI if there are multiple files OR auto-detected in repair function if just one file is uploaded
 
 
 def run_python(run_id, filename):
-    # path inside API container
-    container_path = f"/repairs/{run_id}/{filename}"
+    import os, uuid, subprocess
 
-    # creates unique name for the runner container
+    # repair_data is mounted at /repair_data inside the container
+    host_base = f"/repair_data/{run_id}"
+    host_src = os.path.join(host_base, filename)
+
+    if not os.path.exists(host_base):
+        raise FileNotFoundError(f"Upload directory not found on host: {host_base}")
+
+    if not os.path.exists(host_src):
+        raise FileNotFoundError(f"Source file not found on host: {host_src}")
+
     runner_name = f"python_runner_{uuid.uuid4().hex[:8]}"
 
-    print("RUNNER NAME:", runner_name)
-    print("CONTAINER PATH TO COPY:", container_path)
+    subprocess.run(
+        ["docker", "create", "--name", runner_name, "python-runner", "python", filename],
+        capture_output=True,
+        text=True,
+        check=True
+    )
+    print("Created docker container:", runner_name)
 
-    # Verify file exists before attempting to copy
-    if not os.path.exists(container_path):
-        raise FileNotFoundError(f"Source file not found: {container_path}")
+    # create folder inside container
+    dirname = os.path.dirname(filename)
+    subprocess.run(
+        ["docker", "exec", runner_name, "mkdir", "-p", f"/work/{dirname}"],
+        capture_output=True,
+        text=True
+    )
+    print("Created directory inside container:", dirname)
 
-    try:
-        # 1. runner container params (but do not run yet)
-        create_result = subprocess.run(
-            ["docker", "create", "--name", runner_name,
-             "python-runner", "python", filename],
-            capture_output=True, text=True, check=True
-        )
-        print(f"Container created: {runner_name}")
+    # copy the entire run_id folder
+    subprocess.run(
+        ["docker", "cp", host_base + "/.", f"{runner_name}:/work"],
+        capture_output=True,
+        text=True,
+        check=True
+    )
+    print("Copied files into container")
 
-        # 2. Copy user file from API container into runner container
-        copy_result = subprocess.run(
-            ["docker", "cp",
-             container_path,
-             f"{runner_name}:/work/{filename}"],
-            capture_output=True, text=True, check=True
-        )
-        print(f"File copied successfully to {runner_name}:/work/{filename}")
-        if copy_result.stderr:
-            print(f"Copy stderr: {copy_result.stderr}")
+    proc = subprocess.run(
+        ["docker", "start", "-a", runner_name],
+        capture_output=True,
+        text=True
+    )
+    print("Container run complete. Cleaning up.")
 
-        # 3. Start the container, capture output
-        proc = subprocess.run(
-            ["docker", "start", "-a", runner_name],
-            capture_output=True, text=True
-        )
+    subprocess.run(["docker", "rm", "-f", runner_name], capture_output=True)
 
-        return proc.returncode, proc.stdout, proc.stderr
+    return proc.returncode, proc.stdout, proc.stderr
 
-    finally:
-        # 4. remove the runner container after execution
-        subprocess.run(["docker", "rm", "-f", runner_name], capture_output=True)
-
-
-def run_java(run_id, filename):
-    # Path to user code inside the API container
-    container_path = f"/repairs/{run_id}/{filename}"
-
-    # create a unique runner container name
-    runner_name = f"java_runner_{uuid.uuid4().hex[:8]}"
-
-    print("JAVA RUNNER NAME:", runner_name)
-    print("CONTAINER PATH TO COPY:", container_path)
-
-    # Verify file exists before attempting to copy
-    if not os.path.exists(container_path):
-        raise FileNotFoundError(f"Source file not found: {container_path}")
-
-    try:
-        # 1. create the Java runner container (but do not run it yet)
-        create_result = subprocess.run(
-            ["docker", "create", "--name", runner_name,
-             "java-runner", "sh", "-c",
-             f"javac {filename} && java {filename.replace('.java','')}"],
-            capture_output=True, text=True, check=True
-        )
-        print(f"Container created: {runner_name}")
-
-        # 2. Copy the user's Java file from API container into runner
-        copy_result = subprocess.run(
-            ["docker", "cp",
-             container_path,
-             f"{runner_name}:/work/{filename}"],
-            capture_output=True, text=True, check=True
-        )
-        print(f"File copied successfully to {runner_name}:/work/{filename}")
-        if copy_result.stderr:
-            print(f"Copy stderr: {copy_result.stderr}")
-
-        # 3. Start the container and capture output
-        proc = subprocess.run(
-            ["docker", "start", "-a", runner_name],
-            capture_output=True, text=True
-        )
-
-        return proc.returncode, proc.stdout, proc.stderr
-
-    finally:
-        # 4. Clean up runner container
-        subprocess.run(["docker", "rm", "-f", runner_name], capture_output=True)
 
 
 def extract_code_only(text: str) -> str:
@@ -155,67 +116,260 @@ def extract_code_only(text: str) -> str:
     return "\n".join(cleaned).strip()
 
 
+def extract_json(text: str) -> str:
+    """
+    Extract the first top-level JSON object { ... } from LLM output.
+    Works even if explanations, backticks, or extra text are present.
+    """
+
+    # Strip markdown fences
+    text = text.replace("```json", "").replace("```", "")
+
+    start = text.find("{")
+    if start == -1:
+        raise ValueError("No JSON object start '{' found in LLM output")
+
+    # Scan forward and track braces to find the matching '}'
+    depth = 0
+    for i in range(start, len(text)):
+        if text[i] == "{":
+            depth += 1
+        elif text[i] == "}":
+            depth -= 1
+            if depth == 0:  # Found the full balanced JSON object
+                return text[start:i + 1]
+
+    raise ValueError("No complete JSON object found (unbalanced braces)")
+
+
+def normalize_llm_json(s: str) -> str:
+    """
+    Convert LLM output using Python triple-quoted strings into valid JSON.
+    """
+    # Replace """text""" with "text" (triple → single)
+    # Handles multi-line content.
+    s = re.sub(
+        r'"""\s*(.*?)\s*"""',
+        lambda match: json.dumps(match.group(1)),  # ensures proper escaping
+        s,
+        flags=re.DOTALL
+    )
+    return s
+
+
 @app.post("/upload")
 async def upload(file: UploadFile = File(...), language: str = "python"):
     run_id = uuid.uuid4().hex
     run_dir = os.path.join(WORKDIR, run_id)
     os.makedirs(run_dir, exist_ok=True)
 
-    filename = file.filename
-    dest_path = os.path.join(run_dir, filename)
+    filename = file.filename.lower()
 
-    with open(dest_path, "wb") as f:
-        f.write(await file.read())
+    # CASE 1: ZIP FILE UPLOAD
+    if filename.endswith(".zip"):
+        zip_path = os.path.join(run_dir, "upload.zip")
+        with open(zip_path, "wb") as f:
+            f.write(await file.read())
 
-    return {"run_id": run_id, "filename": filename}
+        # Extract zip
+        try:
+            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                zip_ref.extractall(run_dir)
+        except zipfile.BadZipFile:
+            raise HTTPException(400, "Uploaded file is not a valid zip archive")
+
+        # List extracted files
+        extracted_files = []
+        for root, dirs, files in os.walk(run_dir):
+
+            # Ignore junk directories
+            dirs[:] = [d for d in dirs if not d.startswith("__MACOSX")]
+
+            for f in files:
+                # Skip zip itself
+                if f == "upload.zip":
+                    continue
+
+                # Skip macOS junk files
+                if f.startswith(".") or f.endswith(".DS_Store") or "__MACOSX" in root:
+                    continue
+
+                relpath = os.path.relpath(os.path.join(root, f), run_dir)
+                extracted_files.append(relpath)
+
+        # Filter so only paths that start with the directory name are returned
+        # Example: keep only "syntax_fix_dir/..."
+        top_level_dirs = [d for d in os.listdir(run_dir) 
+                          if os.path.isdir(os.path.join(run_dir, d)) and not d.startswith("__MACOSX")]
+
+
+        return {
+            "run_id": run_id,
+            "files": extracted_files,
+            "directory": True,
+            "message": "Zip directory uploaded and extracted successfully"
+        }
+
+    # CASE 2: SINGLE FILE UPLOAD
+    else:
+        dest_path = os.path.join(run_dir, file.filename)
+        os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+
+        with open(dest_path, "wb") as f:
+            f.write(await file.read())
+        
+
+        return {
+            "run_id": run_id,
+            "files": [file.filename],
+            "directory": False,
+            "message": "Single file uploaded successfully"
+        }
 
 
 @app.post("/repair/{run_id}")
 async def repair(run_id: str, req: RepairRequest):
+    print("ENTERED /repair endpoint")
+
+    single_file = False
     run_dir = os.path.join(WORKDIR, run_id)
 
-    files = os.listdir(run_dir)
-    if not files:
-        raise HTTPException(404, "No file in run directory")
+    # Collect all files in the run directory (recursive)
+    project_files = []
+    for root, dirs, files in os.walk(run_dir):
+        for f in files:
+            # ignore uploaded zip
+            if f == "upload.zip":
+                continue
+            rel = os.path.relpath(os.path.join(root, f), run_dir)
+            project_files.append(rel)
 
-    filename = files[0]
-    max_attempts = 8
+    print(f"Project files collected in run dir: {project_files}")
+
+    if not project_files:
+        raise HTTPException(404, "No files found in uploaded project")
+
+    # ================================
+    # ENTRY FILE SELECTION
+    # ================================
+    # CASE 1: only one file → auto-use it
+    if len(project_files) == 1:
+        single_file = True
+        entry_file = project_files[0]
+
+    # CASE 2: user must provide entry_file
+    else:
+        if not req.entry_file:
+            raise HTTPException(
+                status_code=400,
+                detail="Multiple files uploaded. You must specify 'entry_file'."
+            )
+        if req.entry_file not in project_files:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Selected entry_file '{req.entry_file}' does not exist in uploaded directory"
+            )
+        entry_file = req.entry_file
+
+    max_attempts = 3
 
     # Save original code before any modifications
-    source_path = os.path.join(run_dir, filename)
-    with open(source_path) as f:
-        original_code = f.read().strip()  # Normalize whitespace
+    original_code = {}
+
+    for root, _, files in os.walk(run_dir):
+        # Skip entire __MACOSX directories
+        if "__MACOSX" in root:
+            continue
+
+        for name in files:
+            # Skip the uploaded zip file itself
+            if name.lower().endswith(".zip"):
+                continue
+
+            # Skip macOS junk files
+            if name.startswith("._") or name == ".DS_Store":
+                continue
+
+            file_path = os.path.join(root, name)
+            rel_path = os.path.relpath(file_path, run_dir)
+
+            # Now it's safe to open
+            with open(file_path, "r", errors="ignore") as f:
+                original_code[rel_path] = f.read().strip()
+
+    
+    print("Original code collected for repair")
 
     # Initial run to check if code is already working
     if req.language == "python":
-        ret, out, err = run_python(run_id, filename)
+        print("Running initial Python execution")
+        ret, out, err = run_python(run_id, entry_file)
         print(f"INITIAL RUN - RET: {ret}, OUT:\n{out}\nERR:\n{err}")
     else:
-        ret, out, err = run_java(run_id, filename)
+        ret, out, err = run_java(run_id, entry_file)
         print(f"INITIAL RUN - RET: {ret}, OUT:\n{out}\nERR:\n{err}")
 
     # Check if already successful
     if ret == 0 and (req.expected_output is None or out.strip() == req.expected_output.strip()):
+
+        fixed_code_map = {}
+
+        for f in project_files:
+            name = os.path.basename(f).lower()
+
+            # Skip junk files
+            if (
+                name.startswith("__") or
+                name.endswith(".zip") or
+                name == ".ds_store" or
+                name.startswith("._")
+            ):
+                continue
+
+            abs_path = os.path.join(run_dir, f)
+
+            try:
+                with open(abs_path, "r", encoding="utf-8") as fp:
+                    fixed_code_map[f] = fp.read().strip()
+            except Exception as e:
+                print(f"Skipping non-text file {f}: {e}")
+                continue
+
         return {
             "status": "success",
             "iterations": 0,
             "output": out,
             "message": "Code was already working",
             "original_code": original_code,
-            "fixed_code": original_code
+            "fixed_code": fixed_code_map
         }
 
     # Attempt fixes
     for attempt in range(1, max_attempts + 1):
         print(f"\n=== FIX ATTEMPT {attempt}/{max_attempts} ===")
 
-        # Load current source
-        source_path = os.path.join(run_dir, filename)
-        with open(source_path) as f:
-            src = f.read()
+        def build_llm_project_payload(original_code: dict) -> str:
+            """
+            Convert {relative_path: source_code} into an LLM-friendly payload.
+            """
+            chunks = []
 
-        # Build LLM prompt
-        prompt = f"""
+            for rel_path, code in original_code.items():
+                chunks.append(
+                    f"===== FILE: {rel_path} =====\n"
+                    f"{code}\n"
+                    f"===== END FILE {rel_path} =====\n"
+                )
+
+            return "\n".join(chunks)
+
+
+        project_payload = build_llm_project_payload(original_code)
+        print(f"LLM project payload built:\n{project_payload}")
+
+        # Build LLM prompt for single file repair
+        if single_file:
+            prompt = f"""
 You are a code auto-repair tool.
 
 RULES:
@@ -226,14 +380,12 @@ RULES:
 - NO backticks.
 - NO extra text before or after the code.
 - NO additional imports or files.
-- NO modifying functionality unless needed.
-- ONLY fix the error shown in STDERR or EXIT CODE.
 - KEEP THE ORIGINAL STRUCTURE unless strictly necessary.
 
-INPUT FILE NAME: {filename}
+INPUT FILE NAME: {entry_file}
 
 CURRENT CODE:
-{src}
+{original_code[entry_file]}
 
 STDERR:
 {err}
@@ -246,45 +398,163 @@ EXPECTED OUTPUT:
 
 RETURN ONLY THE FULL FIXED CODE BELOW NOTHING ELSE:
 """
+        # Build LLM prompt for multi-file repair
+        else:
+            prompt = f"""
+You are a code auto-repair tool. 
+RULES:
+- You MUST return only valid {req.language} code.
+- NO explanations.
+- NO extra text before or after the code.
+- NO additional imports or files.
+- KEEP THE ORIGINAL STRUCTURE unless strictly necessary.
+
+Below is the full project directory.
+Each file is marked with '===== FILE: <path> ====='.
+
+{project_payload}
+
+Your task:
+1. Analyze the failing behavior.
+2. Identify which file(s) need modification.
+3. Fix the syntax error(s) or if there are none make sure the code output matches the expected output.
+
+Expected output: 
+{req.expected_output}
+
+STDERR:
+{err}
+
+EXIT CODE:
+{ret}
+
+YOU MUST provide the corrected code project as a JSON mapping, NOTHING ELSE like this:
+{{
+  "filename": "new contents...",
+  ...
+}}
+"""
 
         # Call LLM to fix
         raw = call_llm(prompt)
         print(f"LLM RAW OUTPUT:\n{raw}")
 
-        # Extract and save fixed code
-        new_code = extract_code_only(raw)
-        print(f"CLEANED CODE:\n{new_code}")
+        if single_file:
 
-        with open(source_path, "w") as f:
-            f.write(new_code)
+            # Extract and save fixed code
+            new_code = extract_code_only(raw)
+            print(f"CLEANED CODE:\n{new_code}")
 
-        # Verify the fix by running again
-        if req.language == "python":
-            ret, out, err = run_python(run_id, filename)
-            print(f"VERIFICATION RUN {attempt} - RET: {ret}, OUT:\n{out}\nERR:\n{err}")
+            with open(os.path.join(run_dir, entry_file), "w") as f:
+                f.write(new_code)
+
+            # Verify the fix by running again
+            if req.language == "python":
+                ret, out, err = run_python(run_id, entry_file)
+                print(f"VERIFICATION RUN {attempt} - RET: {ret}, OUT:\n{out}\nERR:\n{err}")
+            else:
+                ret, out, err = run_java(run_id, entry_file)
+                print(f"VERIFICATION RUN {attempt} - RET: {ret}, OUT:\n{out}\nERR:\n{err}")
+
+            # Check if fix was successful
+            if ret == 0 and (req.expected_output is None or out.strip() == req.expected_output.strip()):
+                # Read the fixed code
+                with open(os.path.join(run_dir, entry_file)) as f:
+                    fixed_code = f.read().strip()  # Normalize whitespace
+
+                return {
+                    "status": "success",
+                    "iterations": attempt,
+                    "output": out,
+                    "message": f"Fixed after {attempt} attempt(s)",
+                    "original_code": original_code,
+                    "fixed_code": fixed_code
+                }
+    
         else:
-            ret, out, err = run_java(run_id, filename)
+            # MULTI-FILE MODE
+
+            # The LLM MUST return JSON like:
+            # { "file1.py": "new contents", "dir/utils.py": "new contents" }
+
+            try:
+                cleaned_json = extract_json(raw)
+                cleaned_json = normalize_llm_json(cleaned_json)
+                print(f"CLEANED JSON:\n{cleaned_json}")
+                fixes = json.loads(cleaned_json)
+                if not isinstance(fixes, dict):
+                    raise ValueError("LLM JSON must be an object mapping filename → content")
+            except Exception as e:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"LLM output is not valid JSON: {e}\nRaw Output:\n{cleaned_json}"
+                )
+
+            # Apply changes
+            for rel_path, new_contents in fixes.items():
+                abs_path = os.path.join(run_dir, rel_path)
+
+                # prevent escaping the project dir
+                if not os.path.commonpath([run_dir, abs_path]).startswith(run_dir):
+                    raise HTTPException(
+                        400,
+                        f"LLM attempted to write outside project: {rel_path}"
+                    )
+
+                # ensure directory exists
+                os.makedirs(os.path.dirname(abs_path), exist_ok=True)
+
+                with open(abs_path, "w") as f:
+                    f.write(new_contents)
+
+            # Verify fix
+            if req.language == "python":
+                ret, out, err = run_python(run_id, entry_file)
+            else:
+                ret, out, err = run_java(run_id, entry_file)
+
             print(f"VERIFICATION RUN {attempt} - RET: {ret}, OUT:\n{out}\nERR:\n{err}")
 
-        # Check if fix was successful
-        if ret == 0 and (req.expected_output is None or out.strip() == req.expected_output.strip()):
-            # Read the fixed code
-            with open(source_path) as f:
-                fixed_code = f.read().strip()  # Normalize whitespace
+            # If successful, return entire updated directory
+            if ret == 0 and (req.expected_output is None or out.strip() == req.expected_output.strip()):
+                fixed_code_map = {}
 
-            return {
-                "status": "success",
-                "iterations": attempt,
-                "output": out,
-                "message": f"Fixed after {attempt} attempt(s)",
-                "original_code": original_code,
-                "fixed_code": fixed_code
-            }
+                for f in project_files:
+                    name = os.path.basename(f).lower()
 
-    # Max attempts reached, return current state
-    # Read the last attempted fix
-    with open(source_path) as f:
-        fixed_code = f.read().strip()  # Normalize whitespace
+                    # Skip junk files
+                    if (
+                        name.startswith("__") or
+                        name.endswith(".zip") or
+                        name == ".ds_store" or
+                        name.startswith("._")
+                    ):
+                        continue
+
+                    abs_path = os.path.join(run_dir, f)
+
+                    try:
+                        with open(abs_path, "r", encoding="utf-8") as fp:
+                            fixed_code_map[f] = fp.read().strip()
+                    except Exception as e:
+                        print(f"Skipping non-text file {f}: {e}")
+                        continue
+
+
+                return {
+                    "status": "success",
+                    "iterations": attempt,
+                    "output": out,
+                    "message": f"Fixed after {attempt} attempt(s)",
+                    "original_code": original_code,
+                    "fixed_code": fixed_code_map
+                }
+    # If neither branch succeeded, we fall through to here:
+    # FINAL FAILURE RETURN
+    fixed_on_disk = {
+        f: open(os.path.join(run_dir, f)).read().strip()
+        for f in project_files
+    }
 
     return {
         "status": "failed",
@@ -294,5 +564,5 @@ RETURN ONLY THE FULL FIXED CODE BELOW NOTHING ELSE:
         "last_exit_code": ret,
         "message": f"Could not fix after {max_attempts} attempts",
         "original_code": original_code,
-        "fixed_code": fixed_code
+        "fixed_code": fixed_on_disk
     }
