@@ -475,23 +475,38 @@ function MainApp() {
     try {
       console.log("Accepting changes...");
 
-      // Get the file to update
-      const fileName = selectedIssue.selectedFiles?.[0];
-      if (!fileName) {
-        toast.error("No file selected for this issue");
-        return;
+      // Determine files to merge
+      let filesToMerge: Array<{ fileName: string; fixedCode: string }> = [];
+
+      if (typeof selectedIssue.fixedCode === 'object') {
+        // Multi-file mode: merge all changed files
+        const fixedCodeObj = selectedIssue.fixedCode as Record<string, string>;
+
+        for (const [fileName, fixedCode] of Object.entries(fixedCodeObj)) {
+          if (fixedCode) {
+            filesToMerge.push({ fileName, fixedCode });
+          }
+        }
+      } else {
+        // Single file mode: merge the selected file
+        const fileName = selectedIssue.selectedFiles?.[0];
+        if (!fileName) {
+          toast.error("No file selected for this issue");
+          return;
+        }
+        filesToMerge.push({ fileName, fixedCode: selectedIssue.fixedCode });
       }
 
-      const fileMetadata = projectFiles[selectedProjectId]?.[fileName];
-      if (!fileMetadata) {
-        toast.error("File not found in project");
+      if (filesToMerge.length === 0) {
+        toast.error("No files to merge");
         return;
       }
 
       // Check for conflicts with other merged issues
+      const allFileNames = filesToMerge.map(f => f.fileName);
       const otherMergedIssues = selectedProject?.issues.filter(
         (issue: Issue) => issue.id !== selectedIssueId && issue.status === "merged" &&
-        issue.selectedFiles?.some(f => selectedIssue.selectedFiles?.includes(f))
+        issue.selectedFiles?.some(f => allFileNames.includes(f))
       ) || [];
 
       if (otherMergedIssues.length > 0) {
@@ -501,27 +516,20 @@ function MainApp() {
         return;
       }
 
-      // Extract the fixed code for this file (handle both string and object)
-      let fixedCodeStr: string;
-      if (typeof selectedIssue.fixedCode === 'object') {
-        // Multi-file mode: extract code for the selected file
-        fixedCodeStr = (selectedIssue.fixedCode as Record<string, string>)[fileName];
-        if (!fixedCodeStr) {
-          toast.error("Fixed code not found for selected file");
-          return;
-        }
-      } else {
-        // Single file mode: use the string directly
-        fixedCodeStr = selectedIssue.fixedCode;
+      // Upload all changed files
+      let mergedCount = 0;
+      for (const { fileName, fixedCode } of filesToMerge) {
+        const fileMetadata = projectFiles[selectedProjectId]?.[fileName];
+
+        // Create a new File object with the fixed code
+        const fixedFile = new File([fixedCode], fileName, {
+          type: fileMetadata?.mime_type || "text/plain",
+        });
+
+        // Upload the fixed code to storage (overwrite the original)
+        await uploadProjectFile(selectedProjectId, fixedFile, fileName);
+        mergedCount++;
       }
-
-      // Create a new File object with the fixed code
-      const fixedFile = new File([fixedCodeStr], fileName, {
-        type: fileMetadata.mime_type || "text/plain",
-      });
-
-      // Upload the fixed code to storage (overwrite the original)
-      await uploadProjectFile(selectedProjectId, fixedFile, fileName);
 
       // Mark issue as merged
       await updateIssue(selectedIssueId, {
@@ -533,7 +541,7 @@ function MainApp() {
       await updateProjectFiles(selectedProjectId);
 
       toast.success("Changes merged successfully", {
-        description: "The code has been updated in your project"
+        description: `${mergedCount} file${mergedCount !== 1 ? 's' : ''} updated in your project`
       });
 
       // If issue is connected to GitHub, show the Open PR button
@@ -808,46 +816,62 @@ function MainApp() {
                         {/* Code Changes */}
                         {selectedIssue.originalCode && selectedIssue.fixedCode && (() => {
                           // Handle both single-file (string) and multi-file (object) responses
-                          const fileName = selectedIssue.selectedFiles?.[0] || 'file';
+                          const changes: { id: string; filePath: string; diff: string }[] = [];
 
-                          let originalCodeStr: string;
-                          let fixedCodeStr: string;
+                          // Check if this is a multi-file response (object) or single file (string)
+                          if (typeof selectedIssue.originalCode === 'object' && typeof selectedIssue.fixedCode === 'object') {
+                            // Multi-file mode: generate diffs for ALL files
+                            const originalCodeObj = selectedIssue.originalCode as Record<string, string>;
+                            const fixedCodeObj = selectedIssue.fixedCode as Record<string, string>;
 
-                          // Check if originalCode is an object (multi-file) or string (single file)
-                          if (typeof selectedIssue.originalCode === 'object') {
-                            // Multi-file mode: extract the code for the selected file
-                            originalCodeStr = (selectedIssue.originalCode as Record<string, string>)[fileName] || '';
+                            // Get all files that might have changed
+                            const allFiles = new Set([
+                              ...Object.keys(originalCodeObj),
+                              ...Object.keys(fixedCodeObj)
+                            ]);
+
+                            // Generate diff for each file
+                            for (const file of allFiles) {
+                              const orig = originalCodeObj[file] || '';
+                              const fixed = fixedCodeObj[file] || '';
+
+                              // Only show if file has changes
+                              if (orig !== fixed) {
+                                changes.push({
+                                  id: file,
+                                  filePath: file,
+                                  diff: createUnifiedDiff(orig, fixed, file),
+                                });
+                              }
+                            }
                           } else {
                             // Single file mode: use the string directly
-                            originalCodeStr = selectedIssue.originalCode;
+                            const fileName = selectedIssue.selectedFiles?.[0] || 'file';
+                            const originalCodeStr = typeof selectedIssue.originalCode === 'string'
+                              ? selectedIssue.originalCode
+                              : '';
+                            const fixedCodeStr = typeof selectedIssue.fixedCode === 'string'
+                              ? selectedIssue.fixedCode
+                              : '';
+
+                            if (originalCodeStr && fixedCodeStr && originalCodeStr !== fixedCodeStr) {
+                              changes.push({
+                                id: 'final-change',
+                                filePath: fileName,
+                                diff: createUnifiedDiff(originalCodeStr, fixedCodeStr, fileName),
+                              });
+                            }
                           }
 
-                          // Check if fixedCode is an object (multi-file) or string (single file)
-                          if (typeof selectedIssue.fixedCode === 'object') {
-                            // Multi-file mode: extract the code for the selected file
-                            fixedCodeStr = (selectedIssue.fixedCode as Record<string, string>)[fileName] || '';
-                          } else {
-                            // Single file mode: use the string directly
-                            fixedCodeStr = selectedIssue.fixedCode;
-                          }
-
-                          // Only render if we have both strings
-                          if (!originalCodeStr || !fixedCodeStr) {
+                          // Only render if we have changes to show
+                          if (changes.length === 0) {
                             return null;
                           }
 
                           return (
                             <div>
                               <h4 className="text-xs font-semibold mb-1.5 text-muted-foreground uppercase tracking-wide">Code Changes</h4>
-                              <DiffView changes={[{
-                                id: 'final-change',
-                                filePath: fileName,
-                                diff: createUnifiedDiff(
-                                  originalCodeStr,
-                                  fixedCodeStr,
-                                  fileName
-                                ),
-                              }]} />
+                              <DiffView changes={changes} />
                             </div>
                           );
                         })()}
@@ -1030,28 +1054,87 @@ function MainApp() {
                 try {
                   const fileMap: Record<string, any> = {};
                   let uploadedCount = 0;
+                  let actualTotalFiles = totalFiles;
 
                   for (let i = 0; i < filesToUpload.length; i++) {
                     const file = filesToUpload[i];
                     const relativePath = filePaths?.[i];
 
-                    // Upload with relative path to preserve folder structure
-                    const dbFile = await uploadProjectFile(project.id, file, relativePath);
+                    // Check if this is a zip file
+                    if (file.name.toLowerCase().endsWith('.zip')) {
+                      try {
+                        // Extract zip file
+                        const zip = await JSZip.loadAsync(file);
+                        const extractedFiles: Array<{ file: File; relativePath: string }> = [];
 
-                    // Store file metadata
-                    fileMap[dbFile.name] = {
-                      name: dbFile.name,
-                      path: dbFile.path,
-                      size: dbFile.size,
-                      mime_type: dbFile.mime_type,
-                    };
+                        // Process all files in the zip
+                        for (const [filename, zipEntry] of Object.entries(zip.files)) {
+                          // Skip directories and hidden files
+                          if (zipEntry.dir || filename.startsWith('__MACOSX') || filename.includes('/.')) {
+                            continue;
+                          }
 
-                    uploadedCount++;
+                          // Get file content as blob
+                          const blob = await zipEntry.async('blob');
 
-                    // Update progress toast
-                    toast.loading(`Uploading files... ${uploadedCount}/${totalFiles}`, {
-                      id: `upload-${project.id}`,
-                    });
+                          // Create File object
+                          const extractedFile = new File([blob], filename.split('/').pop() || filename, {
+                            type: blob.type || 'application/octet-stream',
+                          });
+
+                          extractedFiles.push({
+                            file: extractedFile,
+                            relativePath: filename,
+                          });
+                        }
+
+                        // Update total file count
+                        actualTotalFiles = actualTotalFiles - 1 + extractedFiles.length;
+
+                        // Upload each extracted file
+                        for (const { file: extractedFile, relativePath: extractedPath } of extractedFiles) {
+                          const dbFile = await uploadProjectFile(project.id, extractedFile, extractedPath);
+
+                          // Store file metadata
+                          fileMap[dbFile.name] = {
+                            name: dbFile.name,
+                            path: dbFile.path,
+                            size: dbFile.size,
+                            mime_type: dbFile.mime_type,
+                          };
+
+                          uploadedCount++;
+
+                          // Update progress toast
+                          toast.loading(`Uploading files... ${uploadedCount}/${actualTotalFiles}`, {
+                            id: `upload-${project.id}`,
+                          });
+                        }
+                      } catch (zipError) {
+                        console.error('Failed to extract zip file:', zipError);
+                        toast.error(`Failed to extract ${file.name}`, {
+                          description: 'The file may not be a valid zip archive',
+                        });
+                      }
+                    } else {
+                      // Upload non-zip file normally
+                      const dbFile = await uploadProjectFile(project.id, file, relativePath);
+
+                      // Store file metadata
+                      fileMap[dbFile.name] = {
+                        name: dbFile.name,
+                        path: dbFile.path,
+                        size: dbFile.size,
+                        mime_type: dbFile.mime_type,
+                      };
+
+                      uploadedCount++;
+
+                      // Update progress toast
+                      toast.loading(`Uploading files... ${uploadedCount}/${actualTotalFiles}`, {
+                        id: `upload-${project.id}`,
+                      });
+                    }
                   }
 
                   // Store file metadata in local state
@@ -1070,7 +1153,7 @@ function MainApp() {
                   // Show success message
                   toast.success("Project created successfully", {
                     id: `upload-${project.id}`,
-                    description: `${totalFiles} files uploaded${repoName ? ` from ${repoName}` : ''}`
+                    description: `${uploadedCount} files uploaded${repoName ? ` from ${repoName}` : ''}`
                   });
                 } catch (uploadError) {
                   console.error("Failed to upload files:", uploadError);

@@ -485,7 +485,7 @@ async def repair(run_id: str, req: RepairRequest):
             )
         entry_file = req.entry_file
 
-    max_attempts = 3
+    max_attempts = 8
 
     # Save original code before any modifications
     original_code = {}
