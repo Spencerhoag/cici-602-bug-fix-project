@@ -186,6 +186,7 @@ export interface UploadResponse {
 export interface RepairRequest {
   language: string;
   expected_output?: string;
+  entry_file?: string;
 }
 
 export interface RepairResponse {

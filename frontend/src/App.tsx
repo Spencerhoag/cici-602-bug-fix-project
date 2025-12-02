@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Play, X, GitBranch, GitMerge, GitPullRequest, StopCircle, Edit } from "lucide-react";
 import { toast, Toaster } from "sonner";
+import JSZip from "jszip";
 import { Header } from "@/components/layout/Header";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { CreateProject } from "@/components/project/CreateProject";
@@ -313,28 +314,58 @@ function MainApp() {
       return;
     }
 
-    const fileMetadata = projectFiles[selectedProjectId]?.[issueFileNames[0]];
+    // Get the entry file (first selected file)
+    const entryFileName = issueFileNames[0];
+    const entryFileMetadata = projectFiles[selectedProjectId]?.[entryFileName];
 
-    if (!fileMetadata) {
-      toast.error("File not found in project");
+    if (!entryFileMetadata) {
+      toast.error("Entry file not found in project");
       return;
     }
 
     setIsProcessing(true);
 
-    let file: File | null = null;
+    let zipFile: File | null = null;
 
     try {
-      // Download file content from storage
-      const fileContent = await getProjectFileContent(fileMetadata.path);
+      // Get ALL files from the project
+      const allProjectFiles = projectFiles[selectedProjectId] || {};
+      const fileNames = Object.keys(allProjectFiles);
 
-      // Convert to File object
-      file = new File([fileContent], fileMetadata.name, {
-        type: fileMetadata.mime_type || "text/plain",
-      });
+      if (fileNames.length === 0) {
+        toast.error("No files found in project");
+        setIsProcessing(false);
+        return;
+      }
+
+      console.log(`Downloading ${fileNames.length} files from project...`);
+
+      // Create a ZIP with all project files
+      const zip = new JSZip();
+
+      // Download and add each file to the ZIP
+      for (const fileName of fileNames) {
+        const fileMetadata = allProjectFiles[fileName];
+        try {
+          const fileContent = await getProjectFileContent(fileMetadata.path);
+          // Add file to ZIP with its relative path to preserve directory structure
+          zip.file(fileMetadata.name, fileContent);
+          console.log(`Added ${fileMetadata.name} to ZIP`);
+        } catch (error) {
+          console.error(`Failed to download ${fileName}:`, error);
+          toast.error(`Failed to download ${fileName}`);
+          setIsProcessing(false);
+          return;
+        }
+      }
+
+      // Generate the ZIP file
+      const zipBlob = await zip.generateAsync({ type: "blob" });
+      zipFile = new File([zipBlob], "project.zip", { type: "application/zip" });
+      console.log(`Created ZIP with ${fileNames.length} files`);
     } catch (error) {
-      console.error("Failed to download file:", error);
-      toast.error("Failed to download file from storage");
+      console.error("Failed to create project ZIP:", error);
+      toast.error("Failed to prepare project files");
       setIsProcessing(false);
       return;
     }
@@ -355,8 +386,8 @@ function MainApp() {
         }))
       );
 
-      // Upload the file
-      const uploadResponse = await uploadFile(file, "python");
+      // Upload the ZIP file
+      const uploadResponse = await uploadFile(zipFile, "python");
       console.log("Upload response:", uploadResponse);
 
       // Store the run_id
@@ -365,10 +396,11 @@ function MainApp() {
         [selectedIssueId]: uploadResponse.run_id,
       }));
 
-      // Repair the code
+      // Repair the code with the entry file specified
       const repairResponse = await repairCode(uploadResponse.run_id, {
         language: "python",
         expected_output: selectedIssue?.mode === "expected_output" ? selectedIssue.expectedOutput : undefined,
+        entry_file: entryFileName,
       });
       console.log("Repair response:", repairResponse);
 
