@@ -117,6 +117,21 @@ function MainApp() {
             [project.id]: fileMap,
           }));
 
+          // Helper function to parse JSON strings back to objects
+          const parseCodeField = (code: string | undefined): string | Record<string, string> | undefined => {
+            if (!code) return undefined;
+            // Check if it's a JSON string (starts with { and ends with })
+            if (typeof code === 'string' && code.trim().startsWith('{') && code.trim().endsWith('}')) {
+              try {
+                return JSON.parse(code);
+              } catch {
+                // If parsing fails, return as-is
+                return code;
+              }
+            }
+            return code;
+          };
+
           // Transform issues to frontend format
           const issues = dbIssues.map((issue) => ({
             id: issue.id,
@@ -128,9 +143,9 @@ function MainApp() {
             currentIteration: issue.iterations_count,
             selectedFiles: issue.selected_files || [],
             iterations: [], // Not tracking individual iterations anymore
-            // Store final result if available
-            originalCode: issue.original_code,
-            fixedCode: issue.fixed_code,
+            // Store final result if available - parse JSON strings back to objects
+            originalCode: parseCodeField(issue.original_code),
+            fixedCode: parseCodeField(issue.fixed_code),
             reasoning: issue.reasoning,
             runtimeOutput: issue.runtime_output,
             exitCode: issue.exit_code,
@@ -190,6 +205,21 @@ function MainApp() {
   };
 
   const updateProjectIssues = async (projectId: string) => {
+    // Helper function to parse JSON strings back to objects
+    const parseCodeField = (code: string | undefined): string | Record<string, string> | undefined => {
+      if (!code) return undefined;
+      // Check if it's a JSON string (starts with { and ends with })
+      if (typeof code === 'string' && code.trim().startsWith('{') && code.trim().endsWith('}')) {
+        try {
+          return JSON.parse(code);
+        } catch {
+          // If parsing fails, return as-is
+          return code;
+        }
+      }
+      return code;
+    };
+
     const dbIssues = await getIssues(projectId);
     const issues = dbIssues.map((issue) => ({
       id: issue.id,
@@ -201,8 +231,8 @@ function MainApp() {
       currentIteration: issue.iterations_count,
       selectedFiles: issue.selected_files || [],
       iterations: [],
-      originalCode: issue.original_code,
-      fixedCode: issue.fixed_code,
+      originalCode: parseCodeField(issue.original_code),
+      fixedCode: parseCodeField(issue.fixed_code),
       reasoning: issue.reasoning,
       runtimeOutput: issue.runtime_output,
       exitCode: issue.exit_code,
@@ -344,10 +374,19 @@ function MainApp() {
 
       // Update issue status and final result
       const finalStatus = repairResponse.status === "success" ? "solved" : "failed";
+
+      // Serialize original_code and fixed_code if they're objects (multi-file mode)
+      const originalCodeForDb = typeof repairResponse.original_code === 'object'
+        ? JSON.stringify(repairResponse.original_code)
+        : repairResponse.original_code;
+      const fixedCodeForDb = typeof repairResponse.fixed_code === 'object'
+        ? JSON.stringify(repairResponse.fixed_code)
+        : repairResponse.fixed_code;
+
       await updateIssue(selectedIssueId, {
         status: finalStatus,
-        original_code: repairResponse.original_code,
-        fixed_code: repairResponse.fixed_code,
+        original_code: originalCodeForDb,
+        fixed_code: fixedCodeForDb,
         reasoning: repairResponse.message || `Attempted to fix code. ${repairResponse.status === "success" ? "Success!" : "Failed after " + repairResponse.iterations + " attempts."}`,
         runtime_output: repairResponse.output || repairResponse.last_output || repairResponse.last_error || "",
         exit_code: repairResponse.status === "success" ? 0 : (repairResponse.last_exit_code || 1),
@@ -430,8 +469,22 @@ function MainApp() {
         return;
       }
 
+      // Extract the fixed code for this file (handle both string and object)
+      let fixedCodeStr: string;
+      if (typeof selectedIssue.fixedCode === 'object') {
+        // Multi-file mode: extract code for the selected file
+        fixedCodeStr = (selectedIssue.fixedCode as Record<string, string>)[fileName];
+        if (!fixedCodeStr) {
+          toast.error("Fixed code not found for selected file");
+          return;
+        }
+      } else {
+        // Single file mode: use the string directly
+        fixedCodeStr = selectedIssue.fixedCode;
+      }
+
       // Create a new File object with the fixed code
-      const fixedFile = new File([selectedIssue.fixedCode], fileName, {
+      const fixedFile = new File([fixedCodeStr], fileName, {
         type: fileMetadata.mime_type || "text/plain",
       });
 
@@ -721,20 +774,51 @@ function MainApp() {
                         )}
 
                         {/* Code Changes */}
-                        {selectedIssue.originalCode && selectedIssue.fixedCode && (
-                          <div>
-                            <h4 className="text-xs font-semibold mb-1.5 text-muted-foreground uppercase tracking-wide">Code Changes</h4>
-                            <DiffView changes={[{
-                              id: 'final-change',
-                              filePath: selectedIssue.selectedFiles?.[0] || 'file',
-                              diff: createUnifiedDiff(
-                                selectedIssue.originalCode,
-                                selectedIssue.fixedCode,
-                                selectedIssue.selectedFiles?.[0] || 'file'
-                              ),
-                            }]} />
-                          </div>
-                        )}
+                        {selectedIssue.originalCode && selectedIssue.fixedCode && (() => {
+                          // Handle both single-file (string) and multi-file (object) responses
+                          const fileName = selectedIssue.selectedFiles?.[0] || 'file';
+
+                          let originalCodeStr: string;
+                          let fixedCodeStr: string;
+
+                          // Check if originalCode is an object (multi-file) or string (single file)
+                          if (typeof selectedIssue.originalCode === 'object') {
+                            // Multi-file mode: extract the code for the selected file
+                            originalCodeStr = (selectedIssue.originalCode as Record<string, string>)[fileName] || '';
+                          } else {
+                            // Single file mode: use the string directly
+                            originalCodeStr = selectedIssue.originalCode;
+                          }
+
+                          // Check if fixedCode is an object (multi-file) or string (single file)
+                          if (typeof selectedIssue.fixedCode === 'object') {
+                            // Multi-file mode: extract the code for the selected file
+                            fixedCodeStr = (selectedIssue.fixedCode as Record<string, string>)[fileName] || '';
+                          } else {
+                            // Single file mode: use the string directly
+                            fixedCodeStr = selectedIssue.fixedCode;
+                          }
+
+                          // Only render if we have both strings
+                          if (!originalCodeStr || !fixedCodeStr) {
+                            return null;
+                          }
+
+                          return (
+                            <div>
+                              <h4 className="text-xs font-semibold mb-1.5 text-muted-foreground uppercase tracking-wide">Code Changes</h4>
+                              <DiffView changes={[{
+                                id: 'final-change',
+                                filePath: fileName,
+                                diff: createUnifiedDiff(
+                                  originalCodeStr,
+                                  fixedCodeStr,
+                                  fileName
+                                ),
+                              }]} />
+                            </div>
+                          );
+                        })()}
 
                         {/* Runtime Output */}
                         {selectedIssue.runtimeOutput && (

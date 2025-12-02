@@ -45,8 +45,9 @@ export interface Issue {
   iterations: Iteration[];
   selectedFiles?: string[];  // File names selected for this issue
   // Final result after all iterations
-  originalCode?: string;
-  fixedCode?: string;
+  // Can be a string (single file) or Record<string, string> (multi-file: filename -> code)
+  originalCode?: string | Record<string, string>;
+  fixedCode?: string | Record<string, string>;
   reasoning?: string;
   runtimeOutput?: string;
   exitCode?: number;

@@ -31,7 +31,7 @@ export function CreateIssue({ open, onOpenChange, onCreateIssue, projectFiles }:
   const [description, setDescription] = useState("");
   const [mode, setMode] = useState<IssueMode>("basic");
   const [expectedOutput, setExpectedOutput] = useState("");
-  const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
+  const [entryFile, setEntryFile] = useState<string>("");
 
   const handleSubmit = () => {
     onCreateIssue({
@@ -39,32 +39,24 @@ export function CreateIssue({ open, onOpenChange, onCreateIssue, projectFiles }:
       description,
       mode,
       expectedOutput: mode === "expected_output" ? expectedOutput : undefined,
-      selectedFiles,
+      selectedFiles: entryFile ? [entryFile] : [],
     });
     // Reset form
     setTitle("");
     setDescription("");
     setMode("basic");
     setExpectedOutput("");
-    setSelectedFiles([]);
+    setEntryFile("");
     onOpenChange(false);
-  };
-
-  const handleFileToggle = (fileName: string) => {
-    setSelectedFiles(prev =>
-      prev.includes(fileName)
-        ? prev.filter(f => f !== fileName)
-        : [...prev, fileName]
-    );
   };
 
   const isFormValid = () => {
     if (!title) return false;
-    if (!selectedFiles.length) return false; // At least one file is required
+    if (!entryFile) return false; // Entry file is required
     if (mode === "expected_output") {
-      return !!description && !!expectedOutput;
+      return !!expectedOutput;
     }
-    return true; // Basic mode only needs title and files
+    return true; // Basic mode only needs title and entry file
   };
 
   return (
@@ -89,45 +81,30 @@ export function CreateIssue({ open, onOpenChange, onCreateIssue, projectFiles }:
 
           <div>
             <label className="text-sm font-medium mb-2 block">
-              Select Files to Fix <span className="text-destructive">*</span>
+              Entry Point File <span className="text-destructive">*</span>
             </label>
+            <p className="text-xs text-muted-foreground mb-2">
+              Select the main file to run (e.g., main.py). The AI will fix all files in the project.
+            </p>
             {!projectFiles || projectFiles.length === 0 ? (
               <div className="border border-input rounded-md p-4 text-center text-sm text-muted-foreground">
                 No files in this project. Please add files when creating the project.
               </div>
             ) : (
-              <div className="border border-input rounded-md p-3 max-h-64 overflow-y-auto">
-                <div className="space-y-1">
-                  {projectFiles.map((fileName) => {
-                    // Check if this is a nested file path
-                    const isNested = fileName.includes('/');
-                    const indentLevel = isNested ? (fileName.split('/').length - 1) : 0;
-
-                    return (
-                      <label
-                        key={fileName}
-                        className="flex items-center gap-2 p-2 hover:bg-accent rounded cursor-pointer"
-                        style={{ paddingLeft: `${8 + indentLevel * 16}px` }}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={selectedFiles.includes(fileName)}
-                          onChange={() => handleFileToggle(fileName)}
-                          className="h-4 w-4 flex-shrink-0"
-                        />
-                        <span className="text-xs font-mono text-muted-foreground truncate" title={fileName}>
-                          {fileName}
-                        </span>
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-            {selectedFiles.length > 0 && (
-              <p className="text-xs text-muted-foreground mt-1">
-                {selectedFiles.length} file(s) selected
-              </p>
+              <select
+                value={entryFile}
+                onChange={(e) => setEntryFile(e.target.value)}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <option value="">Select entry point file...</option>
+                {projectFiles
+                  .filter(file => file.toLowerCase().endsWith('.py'))
+                  .map((fileName) => (
+                    <option key={fileName} value={fileName}>
+                      {fileName}
+                    </option>
+                  ))}
+              </select>
             )}
           </div>
 
@@ -156,7 +133,7 @@ export function CreateIssue({ open, onOpenChange, onCreateIssue, projectFiles }:
                 <div>
                   <div className="font-medium">Expected Output</div>
                   <div className="text-xs opacity-80 mt-1">
-                    Describe desired behavior
+                    Specify the exact output you want
                   </div>
                 </div>
               </Button>
@@ -164,31 +141,17 @@ export function CreateIssue({ open, onOpenChange, onCreateIssue, projectFiles }:
           </div>
 
           {mode === "expected_output" && (
-            <>
-              <div>
-                <label className="text-sm font-medium mb-2 block">
-                  Description <span className="text-destructive">*</span>
-                </label>
-                <textarea
-                  className="flex min-h-[100px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                  placeholder="Describe the issue in detail..."
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                />
-              </div>
-
-              <div>
-                <label className="text-sm font-medium mb-2 block">
-                  Expected Output <span className="text-destructive">*</span>
-                </label>
-                <textarea
-                  className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                  placeholder="Describe what you want the code to do in natural language..."
-                  value={expectedOutput}
-                  onChange={(e) => setExpectedOutput(e.target.value)}
-                />
-              </div>
-            </>
+            <div>
+              <label className="text-sm font-medium mb-2 block">
+                Expected Output <span className="text-destructive">*</span>
+              </label>
+              <textarea
+                className="flex min-h-[120px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                placeholder="Paste the exact output you are looking for..."
+                value={expectedOutput}
+                onChange={(e) => setExpectedOutput(e.target.value)}
+              />
+            </div>
           )}
         </div>
 
