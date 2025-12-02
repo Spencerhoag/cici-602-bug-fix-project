@@ -136,4 +136,4 @@ This will show:
 1. **"No such container"**: Make sure Docker services are running with `docker compose up -d`
 2. **LLM errors**: Ensure CodeLlama model is pulled with `docker exec -it ollama ollama pull codellama:7b-instruct`
 3. **File not found**: Check that the run_id is correct and the file was uploaded successfully
-4. **Max iterations reached**: The LLM couldn't fix the bug in 3 attempts - check logs for details
+4. **Max iterations reached**: The LLM couldn't fix the bug in 8 attempts - check logs for details
