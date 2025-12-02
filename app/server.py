@@ -615,25 +615,31 @@ RETURN ONLY THE FULL FIXED CODE BELOW NOTHING ELSE:
         # Build LLM prompt for multi-file repair
         else:
             prompt = f"""
-You are a code auto-repair tool. 
-RULES:
-- You MUST return only valid {req.language} code.
-- NO explanations.
-- NO extra text before or after the code.
-- NO additional imports or files.
-- KEEP THE ORIGINAL STRUCTURE unless strictly necessary.
+You are a code auto-repair tool.
+
+CRITICAL: Your response MUST be ONLY a valid JSON object. No explanations, no markdown, no extra text.
+
+OUTPUT FORMAT (this is the ONLY acceptable output):
+{{
+  "main.py": "file contents here",
+  "utils.py": "file contents here"
+}}
+
+CRITICAL RULES:
+1. Change ONLY what is necessary to fix the error - do not refactor or improve code
+2. PRESERVE ALL import statements (they are needed for dependencies between files)
+3. PRESERVE ALL function and class definitions exactly as they are
+4. If a function is called but has a typo in the call, fix ONLY the call, not the imports
 
 Below is the full project directory.
 Each file is marked with '===== FILE: <path> ====='.
 
 {project_payload}
 
-Your task:
-1. Analyze the failing behavior.
-2. Identify which file(s) need modification.
-3. Fix the syntax error(s) or if there are none make sure the code output matches the expected output.
+TASK:
+Fix the error to match the expected output. The error is shown in STDERR below.
 
-Expected output: 
+Expected output:
 {req.expected_output}
 
 STDERR:
@@ -642,15 +648,12 @@ STDERR:
 EXIT CODE:
 {ret}
 
-YOU MUST provide the corrected code project as a JSON mapping, NOTHING ELSE like this:
-{{
-  "filename": "new contents...",
-  ...
-}}
+REMEMBER: Return ONLY the JSON object with filename keys and fixed code values. Make minimal changes.
 """
 
         # Call LLM to fix
-        raw = call_llm(prompt)
+        # For multi-file mode, force JSON output format
+        raw = call_llm(prompt, format="json" if not single_file else None)
         print(f"LLM RAW OUTPUT:\n{raw}")
 
         if single_file:
@@ -701,7 +704,7 @@ YOU MUST provide the corrected code project as a JSON mapping, NOTHING ELSE like
             except Exception as e:
                 raise HTTPException(
                     status_code=500,
-                    detail=f"LLM output is not valid JSON: {e}\nRaw Output:\n{cleaned_json}"
+                    detail=f"LLM output is not valid JSON: {e}\nRaw Output:\n{raw}"
                 )
 
             # Apply changes

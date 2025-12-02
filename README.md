@@ -44,8 +44,8 @@ docker-compose down -v
 # View logs
 docker-compose logs -f
 
-# Run backend unit tests
-pytest -q
+# Run backend unit tests (from project root)
+pytest backend_tests/ -q
 
 # Rebuild specific service
 docker-compose build frontend
@@ -62,11 +62,13 @@ For detailed setup instructions, see [DOCKER_SETUP.md](./DOCKER_SETUP.md)
 
 ```bash
 cd app
-pip install -r requirements.txt
+pip install fastapi uvicorn python-multipart gitpython requests supabase
 python server.py
 ```
 
 Access API docs at http://localhost:8000/docs
+
+**Note:** For manual development, you'll also need Docker installed on your system to run the language-specific code execution containers.
 
 ### Frontend
 
@@ -102,13 +104,19 @@ docker exec -it ollama ollama pull codellama:7b-instruct
 │   React     │─────▶│   FastAPI    │─────▶│   Ollama    │
 │  Frontend   │◀─────│   Backend    │◀─────│   (LLM)     │
 └─────────────┘      └──────────────┘      └─────────────┘
-                            │
-                            ▼
-                     ┌──────────────┐
-                     │   Docker     │
-                     │   Runners    │
-                     │ (Python/Java)│
-                     └──────────────┘
+       │                    │
+       │                    ▼
+       │             ┌──────────────┐
+       │             │   Docker     │
+       │             │   Runners    │
+       │             │ (Python/Java)│
+       │             └──────────────┘
+       │
+       ▼
+┌─────────────┐
+│  Supabase   │
+│ (Auth + DB) │
+└─────────────┘
 ```
 
 ## Features
@@ -120,11 +128,13 @@ docker exec -it ollama ollama pull codellama:7b-instruct
 - **AI-Powered Fixes**: Automatic code repair using LLM
 - **Secure Execution**: Code runs in isolated Docker containers
 - **Multi-language**: Support for Python and Java
+- **Automatic Language Detection**: Detects programming language from file extensions
+- **Entry Point Selection**: Choose the main file to execute for multi-file projects
 
 ### Code Upload Options
 - Single file upload
-- Zip archive (preserves folder structure)
-- GitHub repository URL (coming soon)
+- Multi-file directory upload via zip archive (preserves folder structure)
+- GitHub repository URL (public and private with token)
 
 ### Error Detection
 - Syntax errors
@@ -145,7 +155,8 @@ docker exec -it ollama ollama pull codellama:7b-instruct
 - FastAPI (Python)
 - Docker for code execution
 - Ollama for LLM inference
-- WebSocket support for real-time updates
+- GitPython for GitHub repository cloning
+- WebSocket support for real-time updates (coming soon)
 
 **Infrastructure:**
 - Docker & Docker Compose
@@ -156,7 +167,7 @@ docker exec -it ollama ollama pull codellama:7b-instruct
 
 The app uses Supabase (PostgreSQL) with these tables:
 - `users` - User accounts
-- `projects` - Code projects
+- `projects` - Code projects (includes GitHub metadata for cloned repos)
 - `project_files` - File metadata
 - `issues` - Bug fix requests and results
 
@@ -246,8 +257,11 @@ See [frontend/TESTING.md](./frontend/TESTING.md) and [E2E_SETUP.md](./E2E_SETUP.
 #### Backend Tests
 
 ```bash
-cd app
+# Run from project root
 pytest
+
+# Or specify the test directory
+pytest backend_tests/
 ```
 
 ## Deployment
@@ -262,10 +276,10 @@ For production deployment:
 
 ## Limitations
 
-- No secrets management (don't upload API keys or credentials)
-- Public repositories only for GitHub integration
+- No secrets management (don't upload API keys or credentials in your code)
 - Maximum file size limits apply
 - LLM inference requires significant computational resources
+- Currently supports Python and Java only (other languages detected but not executed)
 
 ## Contributing
 
